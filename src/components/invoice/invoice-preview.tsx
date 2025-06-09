@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardFooter } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter as UiTableFooter } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Trash2, Printer } from 'lucide-react';
-import Image from 'next/image';
+// Removed Image import as it's no longer used for the signature
 
 interface InvoicePreviewProps {
   invoiceItems: InvoiceLineItem[];
@@ -43,8 +43,8 @@ export default function InvoicePreview({
   return (
     <Card className="shadow-lg print-container border-2 border-black">
       <CardHeader className="p-4 border-b-2 border-black card-header">
-        <h1 className="text-2xl font-bold text-center font-headline mb-4">TAX INVOICE</h1>
-        <div className="grid grid-cols-2 gap-4 text-xs card-header-spacing">
+        <h1 className="text-2xl font-bold text-center font-headline mb-2 print:mb-1">TAX INVOICE</h1>
+        <div className="grid grid-cols-2 gap-4 text-xs card-header-spacing print:gap-1">
           {/* Seller Info */}
           <div>
             <p className="font-bold">VISHW ENTERPRISE [2025-2026]</p>
@@ -92,16 +92,10 @@ export default function InvoicePreview({
         </div>
       </CardHeader>
 
-      <CardContent className="p-4 text-xs card-content">
-        <div className="grid grid-cols-2 gap-2 mb-2 border-y-2 border-black py-1 address-section-spacing">
-          <div>
-            <p className="font-bold">Consignee (Ship to)</p>
-            <p>NEELKANTH ELECTRICAL (Placeholder)</p>
-            <p>SHOP NO 15 N KARCADE, NR NK-3 IND PARK, BAKROL (Placeholder)</p>
-            <p>GSTIN/UIN: 24AAXFN4403B1ZH (Placeholder)</p>
-            <p>State Name: Gujarat, Code: 24 (Placeholder)</p>
-            <p>Contact: 9313647568 (Placeholder)</p>
-          </div>
+      <CardContent className="p-4 text-xs card-content print:p-1">
+        <div className="mb-2 border-y-2 border-black py-1 address-section-spacing print:my-1">
+          {/* Consignee (Ship to) section removed */}
+          {/* Buyer (Bill to) section now takes full width or is positioned left */}
           <div>
             <p className="font-bold">Buyer (Bill to)</p>
             <p>NEELKANTH ELECTRICAL (Placeholder)</p>
@@ -129,14 +123,14 @@ export default function InvoicePreview({
             <TableBody>
               {invoiceItems.length === 0 ? (
                 <TableRow className="border-b border-black">
-                  <TableCell colSpan={8} className="text-center h-24">No items added to invoice.</TableCell>
+                  <TableCell colSpan={8} className="text-center h-24 print:h-12">No items added to invoice.</TableCell>
                 </TableRow>
               ) : (
                 invoiceItems.map((item, index) => (
                   <TableRow key={`${item.id}-${index}`} className="border-b border-black">
                     <TableCell className="slno-col border-r border-black">{index + 1}</TableCell>
                     <TableCell className="description-col border-r border-black">{item.name}</TableCell>
-                    <TableCell className="hsn-col border-r border-black">{(item as any).category || item.id.substring(0,6)}</TableCell>
+                    <TableCell className="hsn-col border-r border-black">{item.category}</TableCell>
                     <TableCell className="quantity-col text-right border-r border-black">{item.quantity}</TableCell>
                     <TableCell className="rate-col text-right border-r border-black">${item.price.toFixed(2)}</TableCell>
                     <TableCell className="per-col text-right border-r border-black">PCS</TableCell>
@@ -167,7 +161,7 @@ export default function InvoicePreview({
           </Table>
         </div>
 
-        <div className="mt-2 text-xs border-t-2 border-black pt-1">
+        <div className="mt-2 text-xs border-t-2 border-black pt-1 print:mt-1">
             <p><span className="font-bold">Amount Chargeable (in words):</span> {numberToWords(grandTotal)}</p>
         </div>
 
@@ -204,17 +198,17 @@ export default function InvoicePreview({
                 </TableBody>
              </Table>
         </div>
-         <div className="mt-1 text-xs">
+         <div className="mt-1 text-xs print:mt-0.5">
             <p><span className="font-bold">Tax Amount (in words):</span> {numberToWords(taxAmount)}</p>
         </div>
 
 
       </CardContent>
-      <CardFooter className="p-4 text-xs border-t-2 border-black card-footer">
-        <div className="grid grid-cols-3 gap-4 w-full invoice-footer-grid">
+      <CardFooter className="p-4 text-xs border-t-2 border-black card-footer print:p-1">
+        <div className="grid grid-cols-3 gap-4 w-full invoice-footer-grid print:gap-1">
             <div>
                 <p><span className="font-bold">Remarks:</span> 03 (Placeholder)</p>
-                <p className="font-bold mt-2">Declaration:</p>
+                <p className="font-bold mt-2 print:mt-0.5">Declaration:</p>
                 <p>We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.</p>
             </div>
             <div>
@@ -224,9 +218,9 @@ export default function InvoicePreview({
                 <p>Branch & IFS Code: Vastral & ICIC0007470 (Placeholder)</p>
             </div>
             <div className="text-center">
-                 <Image src="https://placehold.co/120x40.png" alt="Signature Placeholder" width={120} height={30} data-ai-hint="signature stamp" className="mx-auto mb-1" />
-                <p className="font-bold">For: VISHW ENTERPRISE [2025-2026]</p>
-                <p className="mt-2 pt-2 border-t border-dashed border-black">Authorised Signatory</p>
+                 {/* Signature placeholder image removed */}
+                <p className="font-bold pt-6 print:pt-2">For: VISHW ENTERPRISE [2025-2026]</p>
+                <p className="mt-2 pt-2 border-t border-dashed border-black print:mt-1 print:pt-1">Authorised Signatory</p>
             </div>
         </div>
       </CardFooter>

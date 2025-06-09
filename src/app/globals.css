@@ -91,20 +91,23 @@ body {
     color: black !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
-    font-size: 10px !important; /* Base font for print */
-    line-height: 1.2 !important;
+    font-size: 9px !important; /* Base font for print */
+    line-height: 1.1 !important; /* Tighter line height */
+    margin: 0 !important;
+    padding: 0 !important;
   }
   .no-print {
     display: none !important;
   }
   .print-container {
-    margin: 0 !important;
-    padding: 0 !important;
-    width: 100% !important;
+    margin: 0.5cm !important; /* Small margin for the page */
+    padding: 0 !important; 
+    width: auto !important; /* Allow it to fit page width */
     box-shadow: none !important;
     border: 1px solid black !important;
     color: black !important;
-    font-size: 9px !important; /* Smaller font inside container */
+    font-size: 8.5px !important; /* Smaller font inside container */
+    min-height: 0 !important; /* remove min-height if any */
   }
 
   .print-container *, .print-container *::before, .print-container *::after {
@@ -113,30 +116,32 @@ body {
       background-color: transparent !important;
       box-shadow: none !important;
       text-shadow: none !important;
+      line-height: 1.1 !important;
   }
   
   .print-container h1 {
-    font-size: 16px !important;
-    margin-bottom: 0.25rem !important;
+    font-size: 14px !important; /* Reduced H1 size */
+    margin-bottom: 0.15rem !important; /* Reduced margin */
   }
 
   .print-container .card-header,
   .print-container .card-content,
   .print-container .card-footer {
-    padding: 0.25rem !important;
+    padding: 0.15rem !important; /* Reduced padding for card sections */
   }
   
   .print-container .card-header { border-bottom-width: 1px !important; }
-  .print-container .card-content { border-top-width: 1px !important; border-bottom-width: 1px !important; }
+  /* Removed top/bottom borders from card-content as items table will have its own */
+  .print-container .card-content { } 
   .print-container .card-footer { border-top-width: 1px !important; }
 
 
   .print-container .card-header-spacing {
-    @apply gap-1 p-0;
+    @apply gap-1 p-0; /* Reduced gap and padding */
   }
    .print-container .card-header-spacing > div p {
-      margin-bottom: 1px !important;
-      line-height: 1.1 !important;
+      margin-bottom: 0.5px !important; /* Reduced paragraph margin */
+      line-height: 1.05 !important; /* Tighter line height */
    }
 
   .print-container .invoice-meta-table {
@@ -144,42 +149,43 @@ body {
   }
   .print-container .invoice-meta-table > div { /* Rows within invoice-meta-table */
       padding: 0px !important;
-      font-size: 8px !important; /* Even smaller for this tight table */
+      font-size: 7.5px !important; /* Even smaller for this tight table */
   }
   .print-container .invoice-meta-table .font-bold {
-      padding: 1px !important;
+      padding: 0.5px !important; /* Reduced padding */
   }
   .print-container .invoice-meta-table .grid-cols-2 > div {
-      padding: 1px !important;
+      padding: 0.5px !important; /* Reduced padding */
   }
 
 
   .print-container .address-section-spacing {
-    @apply gap-1 p-1 my-1;
+    @apply gap-0.5 p-0.5 my-0.5; /* Reduced gap, padding, and margin */
   }
    .print-container .address-section-spacing > div p {
-     margin-bottom: 1px !important;
-     line-height: 1.1 !important;
+     margin-bottom: 0.5px !important; /* Reduced paragraph margin */
+     line-height: 1.05 !important; /* Tighter line height */
    }
 
 
   .print-container .print-items-table th,
   .print-container .print-items-table td {
-    padding: 1px 2px !important;
-    font-size: 9px !important;
+    padding: 0.5px 1px !important; /* Reduced padding significantly */
+    font-size: 8px !important; /* Reduced font size for table cells */
     vertical-align: top !important;
     border: 1px solid black !important;
+    line-height: 1.1 !important;
   }
   .print-container .print-items-table th {
     font-weight: bold !important;
   }
-  .print-container .print-items-table .slno-col { width: 4% !important; }
-  .print-container .print-items-table .description-col { width: 38% !important; word-break: break-word !important; }
+  .print-container .print-items-table .slno-col { width: 3% !important; }
+  .print-container .print-items-table .description-col { width: 37% !important; word-break: break-word !important; }
   .print-container .print-items-table .hsn-col { width: 15% !important; word-break: break-word !important;}
   .print-container .print-items-table .quantity-col { width: 8% !important; text-align: right !important; }
   .print-container .print-items-table .rate-col { width: 12% !important; text-align: right !important; }
   .print-container .print-items-table .per-col { width: 8% !important; text-align: right !important; }
-  .print-container .print-items-table .amount-col { width: 15% !important; text-align: right !important; }
+  .print-container .print-items-table .amount-col { width: 17% !important; text-align: right !important; }
 
   .print-container .print-grand-total-row td {
     font-weight: bold !important;
@@ -187,42 +193,38 @@ body {
 
   .print-container .tax-summary-table th,
   .print-container .tax-summary-table td {
-    padding: 1px 2px !important;
-    font-size: 9px !important;
+    padding: 0.5px 1px !important; /* Reduced padding */
+    font-size: 8px !important; /* Reduced font size */
     border: 1px solid black !important;
+    line-height: 1.1 !important;
   }
    .print-container .tax-summary-table th {
     font-weight: bold !important;
   }
 
   .print-container .invoice-footer-grid {
-    @apply gap-2 p-1;
+    @apply gap-1 p-0.5; /* Reduced gap and padding */
   }
   .print-container .invoice-footer-grid > div p {
-      margin-bottom: 1px !important;
-      font-size: 8px !important;
-      line-height: 1.1 !important;
+      margin-bottom: 0.5px !important; /* Reduced paragraph margin */
+      font-size: 7.5px !important; /* Reduced font size */
+      line-height: 1.05 !important; /* Tighter line height */
   }
-  .print-container .invoice-footer-grid img {
-    max-height: 25px !important;
+  .print-container .invoice-footer-grid img { /* This style will no longer apply as image is removed */
+    max-height: 20px !important; 
     width: auto !important;
-    margin-bottom: 0.1rem !important;
+    margin-bottom: 0.05rem !important;
   }
   
   .print-container .border, .print-container .border-b, .print-container .border-t, .print-container .border-l, .print-container .border-r,
-  .print-container .border-2, .print-container .border-b-2, .print-container .border-t-2, .print-container .border-x-2 {
-    border-width: 1px !important;
-    border-style: solid !important; /* Ensure border style is set */
+  .print-container .border-2, .print-container .border-b-2, .print-container .border-t-2, .print-container .border-x-2, .print-container .border-y-2 {
+    border-width: 1px !important; /* Ensure all borders are 1px */
+    border-style: solid !important; 
   }
 
   /* Hide default table borders from shadcn that might conflict */
   .print-container table { border-collapse: collapse !important; } /* Crucial for print table borders */
-  .print-container table .border-b { border-bottom-width: 1px !important; }
-  .print-container table .border-r { border-right-width: 1px !important; }
-  .print-container table .border-t-2 { border-top-width: 1px !important; } /* Downgrade 2px borders */
-  .print-container table .border-x-2 { border-left-width: 1px !important; border-right-width: 1px !important;}
-  .print-container table .border-y-2 { border-top-width: 1px !important; border-bottom-width: 1px !important;}
-
+  
   /* Specifically for the main items table to ensure all cell borders */
   .print-container .print-items-table th,
   .print-container .print-items-table td {
@@ -232,5 +234,21 @@ body {
   .print-container .tax-summary-table td {
       border: 1px solid black !important;
   }
+
+  /* Adjust overall border of the card in print */
+  .print-container.card {
+      border-width: 1px !important;
+  }
+
+  /* Ensure table headers for items and tax summary have 1px borders */
+  .print-container .print-items-table thead tr th,
+  .print-container .tax-summary-table thead tr th {
+    border-bottom-width: 1px !important;
+  }
+   .print-container .print-items-table tfoot tr td,
+  .print-container .tax-summary-table tfoot tr td {
+    border-top-width: 1px !important;
+  }
+
 }
 
