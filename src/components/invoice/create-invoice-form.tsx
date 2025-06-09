@@ -131,7 +131,7 @@ export default function CreateInvoiceForm({ inventory, onAddItemToInvoice, buyer
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <Label htmlFor="buyerName" className="flex items-center"><Building2 className="mr-2 h-4 w-4 text-muted-foreground" />Buyer Name</Label>
-              <Input id="buyerName" value={buyerAddress.name} onChange={(e) => handleAddressChange('name', e.target.value)} placeholder="Full Name or Company Name" />
+              <Input id="buyerName" value={buyerAddress.name} className='mt-3' onChange={(e) => handleAddressChange('name', e.target.value)} placeholder="Full Name or Company Name" />
             </div>
             <div>
               <Label htmlFor="gstin" className="flex items-center"><Hash className="mr-2 h-4 w-4 text-muted-foreground" />GSTIN/UIN</Label>

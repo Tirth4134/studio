@@ -23,7 +23,7 @@ export default function AddItemForm({ onAddItem }: AddItemFormProps) {
   const [price, setPrice] = useState('');
   const [stock, setStock] = useState('');
   const [description, setDescription] = useState('');
-  const [isEnriching, setIsEnriching] = useState(false);
+  // const [isEnriching, setIsEnriching] = useState(false);
   const { toast } = useToast();
 
   const handleAddItem = async (e: React.FormEvent) => {
@@ -62,12 +62,12 @@ export default function AddItemForm({ onAddItem }: AddItemFormProps) {
       toast({ title: "Info", description: "Please enter Category, Item Name, and Price to enrich description.", variant: "default"});
       return;
     }
-    setIsEnriching(true);
+    // setIsEnriching(true);
     try {
       const numPrice = parseFloat(price);
       if (isNaN(numPrice) || numPrice <=0) {
          toast({ title: "Error", description: "Please enter a valid price.", variant: "destructive" });
-         setIsEnriching(false);
+        //  setIsEnriching(false);
          return;
       }
       const result = await generateItemDescription({ category, itemName, price: numPrice });
@@ -77,7 +77,7 @@ export default function AddItemForm({ onAddItem }: AddItemFormProps) {
       console.error("Error enriching description:", error);
       toast({ title: "Error", description: "Failed to enrich description.", variant: "destructive" });
     }
-    setIsEnriching(false);
+    // setIsEnriching(false);
   };
 
 
@@ -116,10 +116,10 @@ export default function AddItemForm({ onAddItem }: AddItemFormProps) {
            <div className="space-y-2">
             <Label htmlFor="description">Description (Optional)</Label>
             <Textarea id="description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Enter item description or use AI to enrich it." />
-            <Button type="button" variant="outline" onClick={handleEnrichDescription} disabled={isEnriching}>
+            {/* <Button type="button" variant="outline" onClick={handleEnrichDescription} disabled={isEnriching}>
               {isEnriching ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4 text-yellow-500" />}
               Enrich Description
-            </Button>
+            </Button> */}
           </div>
         </form>
       </CardContent>

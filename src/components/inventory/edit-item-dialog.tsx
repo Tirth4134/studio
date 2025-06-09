@@ -25,7 +25,7 @@ export default function EditItemDialog({ isOpen, onOpenChange, itemToEdit, onUpd
   const [price, setPrice] = useState('');
   const [stock, setStock] = useState('');
   const [description, setDescription] = useState('');
-  const [isEnriching, setIsEnriching] = useState(false);
+  // const [isEnriching, setIsEnriching] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -70,12 +70,12 @@ export default function EditItemDialog({ isOpen, onOpenChange, itemToEdit, onUpd
        toast({ title: "Info", description: "Please enter Category, Item Name, and Price to enrich description.", variant: "default"});
       return;
     }
-    setIsEnriching(true);
+    // setIsEnriching(true);
     try {
       const numPrice = parseFloat(price);
        if (isNaN(numPrice) || numPrice <=0) {
          toast({ title: "Error", description: "Please enter a valid price.", variant: "destructive" });
-         setIsEnriching(false);
+        //  setIsEnriching(false);
          return;
       }
       const result = await generateItemDescription({ category, itemName, price: numPrice });
@@ -85,7 +85,7 @@ export default function EditItemDialog({ isOpen, onOpenChange, itemToEdit, onUpd
       console.error("Error enriching description:", error);
       toast({ title: "Error", description: "Failed to enrich description.", variant: "destructive" });
     }
-    setIsEnriching(false);
+    // setIsEnriching(false);
   };
 
   if (!itemToEdit) return null;
@@ -118,10 +118,10 @@ export default function EditItemDialog({ isOpen, onOpenChange, itemToEdit, onUpd
           <div className="space-y-2">
             <Label htmlFor="edit-description">Description</Label>
             <Textarea id="edit-description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Item description" />
-             <Button type="button" variant="outline" onClick={handleEnrichDescription} disabled={isEnriching}>
+             {/* <Button type="button" variant="outline" onClick={handleEnrichDescription} disabled={isEnriching}>
               {isEnriching ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4 text-yellow-500" />}
               Enrich Description
-            </Button>
+            </Button> */}
           </div>
           <DialogFooter>
             <DialogClose asChild>

@@ -631,11 +631,11 @@ export default function InvoicePreview({
             <div>A/c No.: 747055500275</div>
             <div>Branch & IFS Code: Vastral & ICIC0007470</div>
           </div>
-          <div className="p-2 text-center">
-            <div className="mt-8">
+          <div className="p-2  text-center">
+            <div className="mt-12">
               <strong>For: VISHW ENTERPRISE [2025-2026]</strong>
             </div>
-            <div className="mt-12 border-t border-black pt-1">
+            <div className="mt-0  pt-2 border-t border-black ">
               <strong>Authorised Signatory</strong>
             </div>
           </div>
