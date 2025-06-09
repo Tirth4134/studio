@@ -1,3 +1,4 @@
+
 "use client";
 
 import type { InventoryItem, InvoiceLineItem } from '@/types';
@@ -26,16 +27,40 @@ export default function InvoiceSection({
 }: InvoiceSectionProps) {
   const { toast } = useToast();
 
-  const handleAddItemToInvoice = (newItem: InvoiceLineItem) => {
-    // Update inventory stock
-    setInventory((prevInventory) =>
-      prevInventory.map((invItem) =>
-        invItem.id === newItem.id ? { ...invItem, stock: invItem.stock - newItem.quantity } : invItem
+  const handleAddItemToInvoice = (itemToAdd: InvoiceLineItem) => {
+    const existingItemIndex = invoiceItems.findIndex(invItem => invItem.id === itemToAdd.id);
+
+    if (existingItemIndex !== -1) {
+      // Item already exists, update quantity and total
+      setInvoiceItems(prevItems =>
+        prevItems.map((item, index) =>
+          index === existingItemIndex
+            ? {
+                ...item,
+                quantity: item.quantity + itemToAdd.quantity,
+                total: item.price * (item.quantity + itemToAdd.quantity),
+              }
+            : item
+        )
+      );
+    } else {
+      // New item, add to invoice
+      setInvoiceItems(prevItems => [...prevItems, itemToAdd]);
+    }
+
+    // Update inventory stock for the quantity just added/updated
+    setInventory(prevInventory =>
+      prevInventory.map(invItem =>
+        invItem.id === itemToAdd.id
+          ? { ...invItem, stock: invItem.stock - itemToAdd.quantity }
+          : invItem
       )
     );
-    // Add item to invoice
-    setInvoiceItems((prevItems) => [...prevItems, newItem]);
-    toast({ title: "Success", description: `${newItem.name} added to invoice.` });
+
+    toast({
+      title: "Success",
+      description: `${itemToAdd.name} ${existingItemIndex !== -1 ? 'quantity updated' : 'added'} to invoice.`
+    });
   };
 
   const handleRemoveItemFromInvoice = (itemIdToRemove: string, quantityToReturn: number) => {
@@ -46,27 +71,8 @@ export default function InvoiceSection({
       )
     );
     // Remove item from invoice
-    setInvoiceItems((prevItems) => prevItems.filter((item, index) => {
-      // This logic assumes we remove the first encountered item with this ID. 
-      // If multiple lines of same item, this might need adjustment or rely on unique line item ID.
-      // For simplicity, this version assumes item ID is sufficient for removal of one line.
-      if (item.id === itemIdToRemove) {
-        // Create a copy and ensure we only remove one instance if there are duplicates by ID (unlikely with current structure)
-        const itemIndex = prevItems.findIndex(i => i.id === itemIdToRemove);
-        if (index === itemIndex) return false;
-      }
-      return true;
-    }));
-     // A more robust way if order matters or true unique line IDs are not used:
-    // setInvoiceItems(prevItems => {
-    //   const itemIndex = prevItems.findIndex(item => item.id === itemIdToRemove);
-    //   if (itemIndex > -1) {
-    //     const newItems = [...prevItems];
-    //     newItems.splice(itemIndex, 1);
-    //     return newItems;
-    //   }
-    //   return prevItems;
-    // });
+    // Since items are consolidated by ID by handleAddItemToInvoice, a simple filter is sufficient.
+    setInvoiceItems((prevItems) => prevItems.filter((item) => item.id !== itemIdToRemove));
 
     toast({ title: "Success", description: "Item removed from invoice." });
   };

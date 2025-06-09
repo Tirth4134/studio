@@ -1,3 +1,4 @@
+
 "use client";
 
 import type { InvoiceLineItem } from '@/types';
@@ -30,7 +31,7 @@ export default function InvoicePreview({
     <Card className="shadow-lg print-container">
       <CardHeader className="bg-primary text-primary-foreground text-center print-card-header">
         <div className="flex items-center justify-center mb-2">
-          <Image src="https://placehold.co/100x50.png?text=Logo" alt="Company Logo" width={100} height={50} data-ai-hint="company logo" className="mr-4" />
+          <Image src="https://placehold.co/100x50.png" alt="Company Logo" width={100} height={50} data-ai-hint="company logo" className="mr-4" />
           <div>
             <h2 className="text-3xl font-headline">INVOICE</h2>
             <p className="text-sm">Electronic Shop - InvoiceFlow</p>
