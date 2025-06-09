@@ -2,7 +2,7 @@
 "use client";
 
 import type { InvoiceLineItem } from '@/types';
-import { Card, CardContent, CardHeader, CardFooter } from '@/components/ui/card'; // Removed CardTitle as we'll structure it manually
+import { Card, CardContent, CardHeader, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter as UiTableFooter } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Trash2, Printer } from 'lucide-react';
@@ -33,7 +33,6 @@ export default function InvoicePreview({
   const grandTotal = subTotal + taxAmount;
   const totalQuantity = invoiceItems.reduce((sum, item) => sum + item.quantity, 0);
 
-  // Placeholder function - in a real app, this would convert number to words
   const numberToWords = (num: number): string => {
     if (num === 0) return "Zero";
     // This is a highly simplified placeholder
@@ -43,9 +42,9 @@ export default function InvoicePreview({
 
   return (
     <Card className="shadow-lg print-container border-2 border-black">
-      <CardHeader className="p-4 border-b-2 border-black">
-        <h1 className="text-2xl font-bold text-center font-headline mb-4 print-force-black">TAX INVOICE</h1>
-        <div className="grid grid-cols-2 gap-4 text-xs print-force-black">
+      <CardHeader className="p-4 border-b-2 border-black card-header">
+        <h1 className="text-2xl font-bold text-center font-headline mb-4">TAX INVOICE</h1>
+        <div className="grid grid-cols-2 gap-4 text-xs card-header-spacing">
           {/* Seller Info */}
           <div>
             <p className="font-bold">VISHW ENTERPRISE [2025-2026]</p>
@@ -60,7 +59,7 @@ export default function InvoicePreview({
             <p>E-Mail: vishw_enterprise@yahoo.in</p>
           </div>
           {/* Invoice Metadata */}
-          <div className="border border-black p-1">
+          <div className="border border-black p-1 invoice-meta-table">
             <div className="grid grid-cols-2 border-b border-black">
                 <div className="font-bold p-1 border-r border-black">Invoice No.</div>
                 <div className="p-1">{invoiceNumber}</div>
@@ -93,8 +92,8 @@ export default function InvoicePreview({
         </div>
       </CardHeader>
 
-      <CardContent className="p-4 text-xs print-force-black">
-        <div className="grid grid-cols-2 gap-2 mb-2 border-y-2 border-black py-1">
+      <CardContent className="p-4 text-xs card-content">
+        <div className="grid grid-cols-2 gap-2 mb-2 border-y-2 border-black py-1 address-section-spacing">
           <div>
             <p className="font-bold">Consignee (Ship to)</p>
             <p>NEELKANTH ELECTRICAL (Placeholder)</p>
@@ -114,34 +113,34 @@ export default function InvoicePreview({
         </div>
         
         <div className="overflow-x-auto border-x-2 border-black">
-          <Table className="min-w-full">
-            <TableHeader className="print-table-header border-b-2 border-black">
+          <Table className="min-w-full print-items-table">
+            <TableHeader className="border-b-2 border-black">
               <TableRow>
-                <TableHead className="w-[40px] border-r border-black print-force-black">Sl No.</TableHead>
-                <TableHead className="border-r border-black print-force-black">Description of Goods</TableHead>
-                <TableHead className="w-[100px] border-r border-black print-force-black">HSN/SAC</TableHead>
-                <TableHead className="w-[80px] text-right border-r border-black print-force-black">Quantity</TableHead>
-                <TableHead className="w-[80px] text-right border-r border-black print-force-black">Rate ($)</TableHead>
-                <TableHead className="w-[80px] text-right border-r border-black print-force-black">Per</TableHead>
-                <TableHead className="w-[100px] text-right print-force-black">Amount ($)</TableHead>
+                <TableHead className="slno-col border-r border-black">Sl No.</TableHead>
+                <TableHead className="description-col border-r border-black">Description of Goods</TableHead>
+                <TableHead className="hsn-col border-r border-black">HSN/SAC</TableHead>
+                <TableHead className="quantity-col text-right border-r border-black">Quantity</TableHead>
+                <TableHead className="rate-col text-right border-r border-black">Rate ($)</TableHead>
+                <TableHead className="per-col text-right border-r border-black">Per</TableHead>
+                <TableHead className="amount-col text-right">Amount ($)</TableHead>
                 <TableHead className="no-print w-[80px] text-center">Action</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {invoiceItems.length === 0 ? (
                 <TableRow className="border-b border-black">
-                  <TableCell colSpan={8} className="text-center h-24 print-force-black">No items added to invoice.</TableCell>
+                  <TableCell colSpan={8} className="text-center h-24">No items added to invoice.</TableCell>
                 </TableRow>
               ) : (
                 invoiceItems.map((item, index) => (
                   <TableRow key={`${item.id}-${index}`} className="border-b border-black">
-                    <TableCell className="border-r border-black print-force-black">{index + 1}</TableCell>
-                    <TableCell className="border-r border-black print-force-black">{item.name}</TableCell>
-                    <TableCell className="border-r border-black print-force-black">{item.id.substring(0,8)}</TableCell> {/* Using item.id as HSN/SAC placeholder */}
-                    <TableCell className="text-right border-r border-black print-force-black">{item.quantity}</TableCell>
-                    <TableCell className="text-right border-r border-black print-force-black">${item.price.toFixed(2)}</TableCell>
-                    <TableCell className="text-right border-r border-black print-force-black">PCS</TableCell>
-                    <TableCell className="text-right print-force-black">${item.total.toFixed(2)}</TableCell>
+                    <TableCell className="slno-col border-r border-black">{index + 1}</TableCell>
+                    <TableCell className="description-col border-r border-black">{item.name}</TableCell>
+                    <TableCell className="hsn-col border-r border-black">{(item as any).category || item.id.substring(0,6)}</TableCell>
+                    <TableCell className="quantity-col text-right border-r border-black">{item.quantity}</TableCell>
+                    <TableCell className="rate-col text-right border-r border-black">${item.price.toFixed(2)}</TableCell>
+                    <TableCell className="per-col text-right border-r border-black">PCS</TableCell>
+                    <TableCell className="amount-col text-right">${item.total.toFixed(2)}</TableCell>
                     <TableCell className="no-print text-center">
                       <Button
                         variant="destructive"
@@ -158,61 +157,61 @@ export default function InvoicePreview({
             </TableBody>
             <UiTableFooter className="border-t-2 border-black">
               <TableRow className="print-grand-total-row">
-                <TableCell colSpan={3} className="text-right font-bold border-r border-black print-force-black">Total</TableCell>
-                <TableCell className="text-right font-bold border-r border-black print-force-black">{totalQuantity} PCS</TableCell>
+                <TableCell colSpan={3} className="text-right font-bold border-r border-black">Total</TableCell>
+                <TableCell className="text-right font-bold border-r border-black">{totalQuantity} PCS</TableCell>
                 <TableCell colSpan={2} className="border-r border-black"></TableCell>
-                <TableCell className="text-right font-bold print-force-black">${subTotal.toFixed(2)}</TableCell>
+                <TableCell className="text-right font-bold">${subTotal.toFixed(2)}</TableCell>
                 <TableCell className="no-print"></TableCell>
               </TableRow>
             </UiTableFooter>
           </Table>
         </div>
 
-        <div className="mt-2 text-xs border-t-2 border-black pt-1 print-force-black">
+        <div className="mt-2 text-xs border-t-2 border-black pt-1">
             <p><span className="font-bold">Amount Chargeable (in words):</span> {numberToWords(grandTotal)}</p>
         </div>
 
-        <div className="mt-1 overflow-x-auto border-x-2 border-black border-b-2 text-xs">
+        <div className="mt-1 overflow-x-auto border-x-2 border-black border-b-2 text-xs tax-summary-table">
              <Table className="min-w-full">
-                <TableHeader className="print-table-header border-b border-black">
+                <TableHeader className="border-b border-black">
                     <TableRow>
-                        <TableHead className="w-[100px] border-r border-black print-force-black">HSN/SAC</TableHead>
-                        <TableHead className="border-r border-black print-force-black">Taxable Value</TableHead>
-                        <TableHead colSpan={2} className="text-center border-r border-black print-force-black">Central Tax</TableHead>
-                        <TableHead colSpan={2} className="text-center border-r border-black print-force-black">State Tax</TableHead>
-                        <TableHead className="print-force-black">Total Tax Amount</TableHead>
+                        <TableHead className="w-[100px] border-r border-black">HSN/SAC</TableHead>
+                        <TableHead className="border-r border-black">Taxable Value</TableHead>
+                        <TableHead colSpan={2} className="text-center border-r border-black">Central Tax</TableHead>
+                        <TableHead colSpan={2} className="text-center border-r border-black">State Tax</TableHead>
+                        <TableHead>Total Tax Amount</TableHead>
                     </TableRow>
                     <TableRow className="border-b-2 border-black">
                         <TableHead className="border-r border-black"></TableHead>
                         <TableHead className="border-r border-black"></TableHead>
-                        <TableHead className="w-[70px] border-r border-black print-force-black">Rate</TableHead>
-                        <TableHead className="w-[100px] border-r border-black print-force-black">Amount</TableHead>
-                        <TableHead className="w-[70px] border-r border-black print-force-black">Rate</TableHead>
-                        <TableHead className="w-[100px] border-r border-black print-force-black">Amount</TableHead>
-                        <TableHead className="print-force-black"></TableHead>
+                        <TableHead className="w-[70px] border-r border-black">Rate</TableHead>
+                        <TableHead className="w-[100px] border-r border-black">Amount</TableHead>
+                        <TableHead className="w-[70px] border-r border-black">Rate</TableHead>
+                        <TableHead className="w-[100px] border-r border-black">Amount</TableHead>
+                        <TableHead></TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
                     <TableRow className="border-b-0">
-                        <TableCell className="border-r border-black print-force-black">Total (Placeholder)</TableCell>
-                        <TableCell className="text-right border-r border-black print-force-black">${subTotal.toFixed(2)}</TableCell>
-                        <TableCell className="text-right border-r border-black print-force-black">{(GST_RATE / 2 * 100).toFixed(1)}%</TableCell>
-                        <TableCell className="text-right border-r border-black print-force-black">${(taxAmount / 2).toFixed(2)}</TableCell>
-                        <TableCell className="text-right border-r border-black print-force-black">{(GST_RATE / 2 * 100).toFixed(1)}%</TableCell>
-                        <TableCell className="text-right border-r border-black print-force-black">${(taxAmount / 2).toFixed(2)}</TableCell>
-                        <TableCell className="text-right font-bold print-force-black">${taxAmount.toFixed(2)}</TableCell>
+                        <TableCell className="border-r border-black">Total (Placeholder)</TableCell>
+                        <TableCell className="text-right border-r border-black">${subTotal.toFixed(2)}</TableCell>
+                        <TableCell className="text-right border-r border-black">{(GST_RATE / 2 * 100).toFixed(1)}%</TableCell>
+                        <TableCell className="text-right border-r border-black">${(taxAmount / 2).toFixed(2)}</TableCell>
+                        <TableCell className="text-right border-r border-black">{(GST_RATE / 2 * 100).toFixed(1)}%</TableCell>
+                        <TableCell className="text-right border-r border-black">${(taxAmount / 2).toFixed(2)}</TableCell>
+                        <TableCell className="text-right font-bold">${taxAmount.toFixed(2)}</TableCell>
                     </TableRow>
                 </TableBody>
              </Table>
         </div>
-         <div className="mt-1 text-xs print-force-black">
+         <div className="mt-1 text-xs">
             <p><span className="font-bold">Tax Amount (in words):</span> {numberToWords(taxAmount)}</p>
         </div>
 
 
       </CardContent>
-      <CardFooter className="p-4 text-xs border-t-2 border-black print-force-black">
-        <div className="grid grid-cols-3 gap-4 w-full">
+      <CardFooter className="p-4 text-xs border-t-2 border-black card-footer">
+        <div className="grid grid-cols-3 gap-4 w-full invoice-footer-grid">
             <div>
                 <p><span className="font-bold">Remarks:</span> 03 (Placeholder)</p>
                 <p className="font-bold mt-2">Declaration:</p>
@@ -225,7 +224,7 @@ export default function InvoicePreview({
                 <p>Branch & IFS Code: Vastral & ICIC0007470 (Placeholder)</p>
             </div>
             <div className="text-center">
-                 <Image src="https://placehold.co/150x50.png" alt="Signature Placeholder" width={120} height={40} data-ai-hint="signature stamp" className="mx-auto mb-1" />
+                 <Image src="https://placehold.co/120x40.png" alt="Signature Placeholder" width={120} height={30} data-ai-hint="signature stamp" className="mx-auto mb-1" />
                 <p className="font-bold">For: VISHW ENTERPRISE [2025-2026]</p>
                 <p className="mt-2 pt-2 border-t border-dashed border-black">Authorised Signatory</p>
             </div>

@@ -89,9 +89,10 @@ body {
   body {
     background-color: white !important;
     color: black !important;
-    -webkit-print-color-adjust: exact; /* Chrome, Safari, Edge */
-    print-color-adjust: exact; /* Firefox */
-    font-size: 10px; /* Smaller base font for print */
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    font-size: 10px !important; /* Base font for print */
+    line-height: 1.2 !important;
   }
   .no-print {
     display: none !important;
@@ -101,59 +102,135 @@ body {
     padding: 0 !important;
     width: 100% !important;
     box-shadow: none !important;
-    border: 2px solid black !important; /* Ensure border prints */
+    border: 1px solid black !important;
     color: black !important;
-  }
-  .print-force-black {
-    color: black !important;
-    border-color: black !important;
-  }
-  .print-force-black p,
-  .print-force-black div,
-  .print-force-black span,
-  .print-force-black td,
-  .print-force-black th,
-  .print-force-black h1,
-  .print-force-black h2,
-  .print-force-black label {
-    color: black !important;
-    border-color: black !important;
+    font-size: 9px !important; /* Smaller font inside container */
   }
 
-  .print-card-header {
-    background-color: transparent !important; /* Remove background for print header */
-    color: black !important;
-    border-bottom: 2px solid black !important;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
+  .print-container *, .print-container *::before, .print-container *::after {
+      color: black !important;
+      border-color: black !important;
+      background-color: transparent !important;
+      box-shadow: none !important;
+      text-shadow: none !important;
   }
-   .print-table-header th {
-    background-color: #e9ecef !important; /* Light gray for table header */
-    color: black !important;
+  
+  .print-container h1 {
+    font-size: 16px !important;
+    margin-bottom: 0.25rem !important;
+  }
+
+  .print-container .card-header,
+  .print-container .card-content,
+  .print-container .card-footer {
+    padding: 0.25rem !important;
+  }
+  
+  .print-container .card-header { border-bottom-width: 1px !important; }
+  .print-container .card-content { border-top-width: 1px !important; border-bottom-width: 1px !important; }
+  .print-container .card-footer { border-top-width: 1px !important; }
+
+
+  .print-container .card-header-spacing {
+    @apply gap-1 p-0;
+  }
+   .print-container .card-header-spacing > div p {
+      margin-bottom: 1px !important;
+      line-height: 1.1 !important;
+   }
+
+  .print-container .invoice-meta-table {
+     padding: 0 !important;
+  }
+  .print-container .invoice-meta-table > div { /* Rows within invoice-meta-table */
+      padding: 0px !important;
+      font-size: 8px !important; /* Even smaller for this tight table */
+  }
+  .print-container .invoice-meta-table .font-bold {
+      padding: 1px !important;
+  }
+  .print-container .invoice-meta-table .grid-cols-2 > div {
+      padding: 1px !important;
+  }
+
+
+  .print-container .address-section-spacing {
+    @apply gap-1 p-1 my-1;
+  }
+   .print-container .address-section-spacing > div p {
+     margin-bottom: 1px !important;
+     line-height: 1.1 !important;
+   }
+
+
+  .print-container .print-items-table th,
+  .print-container .print-items-table td {
+    padding: 1px 2px !important;
+    font-size: 9px !important;
+    vertical-align: top !important;
     border: 1px solid black !important;
-    font-weight: bold;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
   }
-  .print-table-header td { /* Ensure td within header also gets styles if used */
-    border: 1px solid black !important;
-  }
-  table, th, td {
-    border: 1px solid black !important; /* Ensure all table borders print */
-  }
-  .print-grand-total-row td {
+  .print-container .print-items-table th {
     font-weight: bold !important;
-    background-color: #f8f9fa !important; /* Very light grey for grand total */
-    color: black !important;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
   }
-  .card { /* This might be too generic, ensure it applies to the main invoice card */
-    box-shadow: none !important;
-    border: 2px solid black !important;
+  .print-container .print-items-table .slno-col { width: 4% !important; }
+  .print-container .print-items-table .description-col { width: 38% !important; word-break: break-word !important; }
+  .print-container .print-items-table .hsn-col { width: 15% !important; word-break: break-word !important;}
+  .print-container .print-items-table .quantity-col { width: 8% !important; text-align: right !important; }
+  .print-container .print-items-table .rate-col { width: 12% !important; text-align: right !important; }
+  .print-container .print-items-table .per-col { width: 8% !important; text-align: right !important; }
+  .print-container .print-items-table .amount-col { width: 15% !important; text-align: right !important; }
+
+  .print-container .print-grand-total-row td {
+    font-weight: bold !important;
   }
-   img { /* Ensure images print if any are used beyond placeholders */
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
+
+  .print-container .tax-summary-table th,
+  .print-container .tax-summary-table td {
+    padding: 1px 2px !important;
+    font-size: 9px !important;
+    border: 1px solid black !important;
+  }
+   .print-container .tax-summary-table th {
+    font-weight: bold !important;
+  }
+
+  .print-container .invoice-footer-grid {
+    @apply gap-2 p-1;
+  }
+  .print-container .invoice-footer-grid > div p {
+      margin-bottom: 1px !important;
+      font-size: 8px !important;
+      line-height: 1.1 !important;
+  }
+  .print-container .invoice-footer-grid img {
+    max-height: 25px !important;
+    width: auto !important;
+    margin-bottom: 0.1rem !important;
+  }
+  
+  .print-container .border, .print-container .border-b, .print-container .border-t, .print-container .border-l, .print-container .border-r,
+  .print-container .border-2, .print-container .border-b-2, .print-container .border-t-2, .print-container .border-x-2 {
+    border-width: 1px !important;
+    border-style: solid !important; /* Ensure border style is set */
+  }
+
+  /* Hide default table borders from shadcn that might conflict */
+  .print-container table { border-collapse: collapse !important; } /* Crucial for print table borders */
+  .print-container table .border-b { border-bottom-width: 1px !important; }
+  .print-container table .border-r { border-right-width: 1px !important; }
+  .print-container table .border-t-2 { border-top-width: 1px !important; } /* Downgrade 2px borders */
+  .print-container table .border-x-2 { border-left-width: 1px !important; border-right-width: 1px !important;}
+  .print-container table .border-y-2 { border-top-width: 1px !important; border-bottom-width: 1px !important;}
+
+  /* Specifically for the main items table to ensure all cell borders */
+  .print-container .print-items-table th,
+  .print-container .print-items-table td {
+      border: 1px solid black !important;
+  }
+  .print-container .tax-summary-table th,
+  .print-container .tax-summary-table td {
+      border: 1px solid black !important;
   }
 }
+
