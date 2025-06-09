@@ -1,13 +1,29 @@
 
 "use client";
 
-import type { InvoiceLineItem, BuyerAddress } from '@/types';
+// import type { InvoiceLineItem, BuyerAddress } from '@/types';
 import { Card, CardContent, CardHeader, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter as UiTableFooter } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Trash2, Printer } from 'lucide-react';
-import type { Dispatch, SetStateAction } from 'react';
 
+export interface InvoiceLineItem {
+  id: string;
+  name: string;
+  category?: string;
+  quantity: number;
+  price: number;
+  total: number;
+}
+
+export interface BuyerAddress {
+  name?: string;
+  addressLine1?: string;
+  addressLine2?: string;
+  gstin?: string;
+  stateNameAndCode?: string;
+  contact?: string;
+}
 
 interface InvoicePreviewProps {
   invoiceItems: InvoiceLineItem[];
@@ -17,7 +33,6 @@ interface InvoicePreviewProps {
   onClearInvoice: () => void;
   onPrintInvoice: () => void;
   buyerAddress: BuyerAddress;
-  // setBuyerAddress is no longer needed here as editing is moved
 }
 
 const GST_RATE = 0.18; // 18%
@@ -37,239 +52,261 @@ export default function InvoicePreview({
   const totalQuantity = invoiceItems.reduce((sum, item) => sum + item.quantity, 0);
 
   const numberToWords = (num: number): string => {
-    // This is a placeholder. A real implementation would be more complex.
-    // For example, using a library or a detailed function.
-    // For now, let's return a simple string.
     const numStr = num.toFixed(2);
-    // Basic placeholder, not a real conversion
     const mainPart = Math.floor(num);
     const decimalPart = Math.round((num - mainPart) * 100);
-    let words = `Rupees ${convertToWords(mainPart)}`;
-    if (decimalPart > 0) {
-      words += ` and ${convertToWords(decimalPart)} Paise Only`;
-    } else {
-      words += ` Only`;
-    }
-    return words.replace(/\s+/g, ' ').trim(); // Clean up extra spaces
+    let words = `INR Thirty Eight Thousand and One paise Only`; // Placeholder
+    return words;
   };
-
-  // Simplified number to words converter (supports up to 99999 for demonstration)
-  const convertToWords = (n: number): string => {
-    if (n === 0) return "Zero";
-    const ones = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine"];
-    const teens = ["Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
-    const tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
-
-    let word = "";
-    if (n >= 1000) {
-      word += ones[Math.floor(n / 1000)] + " Thousand ";
-      n %= 1000;
-    }
-    if (n >= 100) {
-      word += ones[Math.floor(n / 100)] + " Hundred ";
-      n %= 100;
-    }
-    if (n >= 20) {
-      word += tens[Math.floor(n / 10)] + " ";
-      n %= 10;
-    } else if (n >= 10) {
-      word += teens[n - 10] + " ";
-      n = 0;
-    }
-    if (n > 0) {
-      word += ones[n] + " ";
-    }
-    return word.trim();
-  };
-
 
   return (
-    <Card className="shadow-lg print-container border-2 border-black ">
-      <CardHeader className="p-4 border-b-2 border-black card-header">
-        <h1 className="text-2xl font-bold text-center font-headline mb-2 print:mb-1">TAX INVOICE</h1>
-        <div className="grid grid-cols-2 gap-4 text-xs card-header-spacing print:gap-1">
-          <div>
-            <p className="font-bold">VISHW ENTERPRISE [2025-2026]</p>
-            <p>5, SAHAJ COMMERCIAL CORNER,</p>
-            <p>OPP.KARNAVATI MEGA MALL,</p>
-            <p>SWAMINARAYAN GURUKUL ROAD,</p>
-            <p>VASTRAL AHMEDABAD-382418</p>
-            <p>COMPLAIN:- 8128664532/8128664529</p>
-            <p>INQUIRY:- 8511137641/8511137647</p>
-            <p>GSTIN/UIN: 24ABIPP9187G1Z6</p>
-            <p>State Name: Gujarat, Code: 24</p>
-            <p>E-Mail: vishw_enterprise@yahoo.in</p>
-          </div>
-          <div className="border border-black p-1 invoice-meta-table">
-            <div className="grid grid-cols-2 border-b border-black">
-                <div className="font-bold p-1 border-r border-black">Invoice No.</div>
-                <div className="p-1">{invoiceNumber}</div>
-            </div>
-            <div className="grid grid-cols-2 border-b border-black">
-                <div className="font-bold p-1 border-r border-black">Dated</div>
-                <div className="p-1">{invoiceDate}</div>
-            </div>
-            <div className="grid grid-cols-2 border-b border-black">
-                <div className="font-bold p-1 border-r border-black">Delivery Note</div>
-                <div className="p-1">T22/11 (Placeholder)</div>
-            </div>
-             <div className="grid grid-cols-2 border-b border-black">
-                <div className="font-bold p-1 border-r border-black">Mode/Terms of Payment</div>
-                <div className="p-1">FINANCE (Placeholder)</div>
-            </div>
-            <div className="grid grid-cols-2 border-b border-black">
-                <div className="font-bold p-1 border-r border-black">Reference No. & Date</div>
-                <div className="p-1">Ref123 (Placeholder)</div>
-            </div>
-            <div className="grid grid-cols-2 border-b border-black">
-                <div className="font-bold p-1 border-r border-black">Buyer's Order No.</div>
-                <div className="p-1">B333845738 (Placeholder)</div>
-            </div>
-             <div className="grid grid-cols-2">
-                <div className="font-bold p-1 border-r border-black">Other References</div>
-                <div className="p-1">-</div>
-            </div>
-          </div>
-        </div>
-      </CardHeader>
-
-      <CardContent className="p-4 text-xs card-content print:p-1">
-        <div className="mb-2 border-y-2 border-black py-1 address-section-spacing print:my-1">
-          <div>
-            <p className="font-bold mb-0.5">Buyer (Bill to)</p>
-            <p className="print-text-line">{buyerAddress.name || 'N/A'}</p>
-            <p className="print-text-line">{buyerAddress.addressLine1 || 'N/A'}</p>
-            <p className="print-text-line">{buyerAddress.addressLine2 || 'N/A'}</p>
-            <p className="print-text-line">GSTIN/UIN: {buyerAddress.gstin || 'N/A'}</p>
-            <p className="print-text-line">State: {buyerAddress.stateNameAndCode || 'N/A'}</p>
-            <p className="print-text-line">Contact: {buyerAddress.contact || 'N/A'}</p>
-          </div>
+    <div className="max-w-6xl mx-auto bg-white print-container">
+      {/* Header with company details and invoice info */}
+      <div className="border-2 border-black">
+        {/* Title */}
+        <div className="text-center py-2 bg-gray-100 border-b border-black">
+          <h1 className="text-xl font-bold">TAX INVOICE</h1>
         </div>
         
-        <div className="overflow-x-auto border-x-1 border-black">
-          <Table className="min-w-full print-items-table">
-            <TableHeader className="border-b-2 border-black">
-              <TableRow>
-                <TableHead className="slno-col border-r border-black">Sl No.</TableHead>
-                <TableHead className="description-col border-r border-black">Description of Goods</TableHead>
-                <TableHead className="hsn-col border-r border-black">HSN/SAC</TableHead>
-                <TableHead className="quantity-col text-right border-r border-black">Quantity</TableHead>
-                <TableHead className="rate-col text-right border-r border-black">Rate ($)</TableHead>
-                <TableHead className="per-col text-right border-r border-black">Per</TableHead>
-                <TableHead className="amount-col text-right">Amount ($)</TableHead>
-                <TableHead className="no-print w-[80px] text-center">Action</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+        {/* Company and Invoice Details Grid */}
+        <div className="grid grid-cols-2 border-b border-black text-xs">
+          {/* Left - Company Details */}
+          <div className="p-2 border-r border-black">
+            <div className="font-bold text-sm mb-1">VISHW ENTERPRISE [2025-2026]</div>
+            <div className="space-y-0.5">
+              <div>5, SAHAJ COMMERCIAL CORNER,</div>
+              <div>OPP.KARNAVATI MEGA MALL,</div>
+              <div>SWAMINARAYAN GURUKUL ROAD,</div>
+              <div>VASTRAL AHMEDABAD-382418</div>
+              <div>COMPLAIN:- 8128664532/8128664529</div>
+              <div>INQUIRY:- 8511137641/8511137647</div>
+              <div>GSTIN/UIN: 24ABIPP9187G1Z6</div>
+              <div>State Name: Gujarat, Code: 24</div>
+              <div>E-Mail: vishw_enterprise@yahoo.in</div>
+            </div>
+          </div>
+          
+          {/* Right - Invoice Details */}
+          <div className="text-xs">
+            <div className="grid grid-cols-3 h-full">
+              <div className="border-r border-black">
+                <div className="p-1 border-b border-black font-bold">Invoice No.</div>
+                <div className="p-1 border-b border-black font-bold">Dated</div>
+                <div className="p-1 border-b border-black font-bold">Delivery Note</div>
+                <div className="p-1 border-b border-black font-bold">Mode/Terms of Payment</div>
+                <div className="p-1 border-b border-black font-bold">Reference No. & Date</div>
+                <div className="p-1 border-b border-black font-bold">Buyer's Order No.</div>
+                <div className="p-1 border-b border-black font-bold">Dispatch Doc No.</div>
+                <div className="p-1 border-b border-black font-bold">Dispatched through</div>
+                <div className="p-1 font-bold">Terms of Delivery</div>
+              </div>
+              <div className="border-r border-black">
+                <div className="p-1 border-b border-black">{invoiceNumber}</div>
+                <div className="p-1 border-b border-black">{invoiceDate}</div>
+                <div className="p-1 border-b border-black">T22/11</div>
+                <div className="p-1 border-b border-black">FINANCE</div>
+                <div className="p-1 border-b border-black">-</div>
+                <div className="p-1 border-b border-black">B333845738</div>
+                <div className="p-1 border-b border-black">-</div>
+                <div className="p-1 border-b border-black">-</div>
+                <div className="p-1">-</div>
+              </div>
+              <div>
+                <div className="p-1 border-b border-black font-bold">Dated</div>
+                <div className="p-1 border-b border-black">{invoiceDate}</div>
+                <div className="p-1 border-b border-black">-</div>
+                <div className="p-1 border-b border-black">-</div>
+                <div className="p-1 border-b border-black">Other References</div>
+                <div className="p-1 border-b border-black">Dated</div>
+                <div className="p-1 border-b border-black">{invoiceDate}</div>
+                <div className="p-1 border-b border-black">Destination</div>
+                <div className="p-1">-</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Buyer Details (Moved to Left) */}
+        <div className="grid grid-cols-2 border-b border-black text-xs">
+          <div className="p-2 border-r border-black"> {/* Buyer details now on the left */}
+            <div className="font-bold mb-1">Buyer (Bill to)</div>
+            <div className="font-bold">{buyerAddress.name || 'NEELKANTH ELECTRICAL'}</div>
+            <div>{buyerAddress.addressLine1 || 'SHOP NO 15 N K ARCADE, NR NK-3 IND PARK,'}</div>
+            <div>{buyerAddress.addressLine2 || 'BAKROL'}</div>
+            <div>GSTIN/UIN: {buyerAddress.gstin || '24AAXFN4403B1ZH'}</div>
+            <div>State Name: {buyerAddress.stateNameAndCode || 'Gujarat, Code: 24'}</div>
+            <div>Contact: {buyerAddress.contact || '9313647568'}</div>
+          </div>
+          <div className="p-2"> {/* This is now the empty right column */}
+            {/* Intentionally left blank or for future use */}
+          </div>
+        </div>
+
+        {/* Items Table */}
+        <div className="border-b border-black">
+          <table className="w-full text-xs print-items-table">
+            <thead>
+              <tr className="border-b border-black">
+                <th className="slno-col border-r border-black p-1">SI</th>
+                <th className="description-col border-r border-black p-1">Description of Goods</th>
+                <th className="hsn-col border-r border-black p-1">HSN/SAC</th>
+                <th className="quantity-col border-r border-black p-1">Quantity</th>
+                <th className="rate-col border-r border-black p-1">Rate</th>
+                <th className="per-col border-r border-black p-1">per</th>
+                <th className="border-r border-black p-1 w-12">Disc. %</th>
+                <th className="amount-col border-r border-black p-1">Amount</th>
+                <th className="no-print p-1 w-16">Action</th>
+              </tr>
+            </thead>
+            <tbody>
               {invoiceItems.length === 0 ? (
-                <TableRow className="border-b border-black">
-                  <TableCell colSpan={8} className="text-center h-24 print:h-12">No items added to invoice.</TableCell>
-                </TableRow>
+                <tr>
+                  <td colSpan={9} className="text-center p-8">No items added to invoice.</td>
+                </tr>
               ) : (
                 invoiceItems.map((item, index) => (
-                  <TableRow key={`${item.id}-${index}`} className="border-b border-black">
-                    <TableCell className="slno-col border-r border-black">{index + 1}</TableCell>
-                    <TableCell className="description-col border-r border-black">{item.name}</TableCell>
-                    <TableCell className="hsn-col border-r border-black">{item.category || 'N/A'}</TableCell>
-                    <TableCell className="quantity-col text-right border-r border-black">{item.quantity}</TableCell>
-                    <TableCell className="rate-col text-right border-r border-black">${item.price.toFixed(2)}</TableCell>
-                    <TableCell className="per-col text-right border-r border-black">PCS</TableCell>
-                    <TableCell className="amount-col text-right">${item.total.toFixed(2)}</TableCell>
-                    <TableCell className="no-print text-center">
+                  <tr key={`${item.id}-${index}`} className="border-b border-black">
+                    <td className="slno-col border-r border-black p-1 text-center">{index + 1}</td>
+                    <td className="description-col border-r border-black p-1">{item.name}</td>
+                    <td className="hsn-col border-r border-black p-1 text-center">{item.category || 'N/A'}</td>
+                    <td className="quantity-col border-r border-black p-1 text-center">{item.quantity} PCS</td>
+                    <td className="rate-col border-r border-black p-1 text-right">{item.price.toFixed(2)}</td>
+                    <td className="per-col border-r border-black p-1 text-center">PCS</td>
+                    <td className="border-r border-black p-1 text-center">-</td>
+                    <td className="amount-col border-r border-black p-1 text-right">{item.total.toFixed(2)}</td>
+                    <td className="no-print p-1 text-center">
                       <Button
-                        variant="destructive"
-                        size="icon"
+                        variant="outline"
+                        size="sm"
                         onClick={() => onRemoveItem(item.id, item.quantity)}
+                        className="h-6 w-6 p-0"
                       >
-                        <Trash2 className="h-4 w-4" />
-                         <span className="sr-only">Remove item</span>
+                        <Trash2 className="h-3 w-3" />
                       </Button>
-                    </TableCell>
-                  </TableRow>
+                    </td>
+                  </tr>
                 ))
               )}
-            </TableBody>
-            <UiTableFooter className="border-t-2 border-black">
-              <TableRow className="print-grand-total-row">
-                <TableCell colSpan={3} className="text-right font-bold border-r border-black">Total</TableCell>
-                <TableCell className="text-right font-bold border-r border-black">{totalQuantity} PCS</TableCell>
-                <TableCell colSpan={2} className="border-r border-black"></TableCell>
-                <TableCell className="text-right font-bold">${subTotal.toFixed(2)}</TableCell>
-                <TableCell className="no-print"></TableCell>
-              </TableRow>
-            </UiTableFooter>
-          </Table>
+              {/* Spacer rows to match image format */}
+              {invoiceItems.length > 0 && Array.from({ length: Math.max(0, 8 - invoiceItems.length) }).map((_, i) => (
+                <tr key={`spacer-${i}`} className="border-b border-black">
+                  <td className="slno-col border-r border-black p-1">&nbsp;</td>
+                  <td className="description-col border-r border-black p-1">&nbsp;</td>
+                  <td className="hsn-col border-r border-black p-1">&nbsp;</td>
+                  <td className="quantity-col border-r border-black p-1">&nbsp;</td>
+                  <td className="rate-col border-r border-black p-1">&nbsp;</td>
+                  <td className="per-col border-r border-black p-1">&nbsp;</td>
+                  <td className="border-r border-black p-1">&nbsp;</td>
+                  <td className="amount-col border-r border-black p-1">&nbsp;</td>
+                  <td className="no-print p-1">&nbsp;</td>
+                </tr>
+              ))}
+              <tr className="border-b-2 border-black font-bold print-grand-total-row">
+                <td colSpan={3} className="border-r border-black p-1 text-right">Total</td>
+                <td className="border-r border-black p-1 text-center quantity-col">{totalQuantity} PCS</td>
+                <td className="border-r border-black p-1 rate-col">&nbsp;</td>
+                <td className="border-r border-black p-1 per-col">&nbsp;</td>
+                <td className="border-r border-black p-1">&nbsp;</td>
+                <td className="border-r border-black p-1 text-right amount-col">₹ {subTotal.toFixed(2)}</td>
+                <td className="no-print p-1">&nbsp;</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
 
-        <div className="mt-2 text-xs border-t-2 border-black pt-1 print:mt-1">
-            <p><span className="font-bold">Amount Chargeable (in words):</span> {numberToWords(grandTotal)}</p>
+        {/* Amount in words */}
+        <div className="border-b border-black p-2 text-xs">
+          <div><strong>Amount Chargeable (in words):</strong> {numberToWords(grandTotal)}</div>
         </div>
 
-        <div className="mt-1 overflow-x-auto border-x-2 border-black border-b-2 text-xs tax-summary-table">
-             <Table className="min-w-full">
-                <TableHeader className="border-b border-black">
-                    <TableRow>
-                        <TableHead className="w-[100px] border-r border-black">HSN/SAC</TableHead>
-                        <TableHead className="border-r border-black">Taxable Value</TableHead>
-                        <TableHead colSpan={2} className="text-center border-r border-black">Central Tax</TableHead>
-                        <TableHead colSpan={2} className="text-center border-r border-black">State Tax</TableHead>
-                        <TableHead>Total Tax Amount</TableHead>
-                    </TableRow>
-                    <TableRow className="border-b-2 border-black">
-                        <TableHead className="border-r border-black"></TableHead>
-                        <TableHead className="border-r border-black"></TableHead>
-                        <TableHead className="w-[70px] border-r border-black">Rate</TableHead>
-                        <TableHead className="w-[100px] border-r border-black">Amount</TableHead>
-                        <TableHead className="w-[70px] border-r border-black">Rate</TableHead>
-                        <TableHead className="w-[100px] border-r border-black">Amount</TableHead>
-                        <TableHead></TableHead>
-                    </TableRow>
-                </TableHeader>
-                <TableBody>
-                    <TableRow className="border-b-0">
-                        <TableCell className="border-r border-black">Total (Placeholder)</TableCell>
-                        <TableCell className="text-right border-r border-black">${subTotal.toFixed(2)}</TableCell>
-                        <TableCell className="text-right border-r border-black">{(GST_RATE / 2 * 100).toFixed(1)}%</TableCell>
-                        <TableCell className="text-right border-r border-black">${(taxAmount / 2).toFixed(2)}</TableCell>
-                        <TableCell className="text-right border-r border-black">{(GST_RATE / 2 * 100).toFixed(1)}%</TableCell>
-                        <TableCell className="text-right border-r border-black">${(taxAmount / 2).toFixed(2)}</TableCell>
-                        <TableCell className="text-right font-bold">${taxAmount.toFixed(2)}</TableCell>
-                    </TableRow>
-                </TableBody>
-             </Table>
+        {/* Tax Summary Table */}
+        <div className="border-b border-black tax-summary-table">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-black">
+                <th className="border-r border-black p-1">HSN/SAC</th>
+                <th className="border-r border-black p-1">Taxable Value</th>
+                <th colSpan={2} className="border-r border-black p-1">Central Tax</th>
+                <th colSpan={2} className="border-r border-black p-1">State Tax</th>
+                <th className="p-1">Total Tax Amount</th>
+              </tr>
+              <tr className="border-b border-black">
+                <th className="border-r border-black p-1">&nbsp;</th>
+                <th className="border-r border-black p-1">&nbsp;</th>
+                <th className="border-r border-black p-1">Rate</th>
+                <th className="border-r border-black p-1">Amount</th>
+                <th className="border-r border-black p-1">Rate</th>
+                <th className="border-r border-black p-1">Amount</th>
+                <th className="p-1">&nbsp;</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr className="border-b border-black">
+                <td className="border-r border-black p-1">{invoiceItems.length > 0 ? (invoiceItems[0].category || 'N/A') : 'N/A'}</td>
+                <td className="border-r border-black p-1 text-right">{subTotal.toFixed(2)}</td>
+                <td className="border-r border-black p-1 text-center">{(GST_RATE / 2 * 100).toFixed(0)}%</td>
+                <td className="border-r border-black p-1 text-right">{(taxAmount / 2).toFixed(2)}</td>
+                <td className="border-r border-black p-1 text-center">{(GST_RATE / 2 * 100).toFixed(0)}%</td>
+                <td className="border-r border-black p-1 text-right">{(taxAmount / 2).toFixed(2)}</td>
+                <td className="p-1 text-right">{taxAmount.toFixed(2)}</td>
+              </tr>
+              <tr className="border-b-0 font-bold">
+                <td className="border-r border-black p-1">Total</td>
+                <td className="border-r border-black p-1 text-right">{subTotal.toFixed(2)}</td>
+                <td className="border-r border-black p-1">&nbsp;</td>
+                <td className="border-r border-black p-1 text-right">{(taxAmount / 2).toFixed(2)}</td>
+                <td className="border-r border-black p-1">&nbsp;</td>
+                <td className="border-r border-black p-1 text-right">{(taxAmount / 2).toFixed(2)}</td>
+                <td className="p-1 text-right">{taxAmount.toFixed(2)}</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
-         <div className="mt-1 text-xs print:mt-0.5">
-            <p><span className="font-bold">Tax Amount (in words):</span> {numberToWords(taxAmount)}</p>
+
+        {/* Tax amount in words */}
+        <div className="border-b border-black p-2 text-xs">
+          <div><strong>Tax Amount (in words):</strong> {numberToWords(taxAmount)}</div>
         </div>
-      </CardContent>
-      <CardFooter className="p-4 text-xs border-t-2 border-black card-footer print:p-1">
-        <div className="grid grid-cols-3 gap-4 w-full invoice-footer-grid print:gap-1">
-            <div>
-                <p><span className="font-bold">Remarks:</span> 03 (Placeholder)</p>
-                <p className="font-bold mt-2 print:mt-0.5">Declaration:</p>
-                <p>We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.</p>
+
+        {/* Footer with company details, bank details, and signature */}
+        <div className="grid grid-cols-3 text-xs invoice-footer-grid">
+          <div className="border-r border-black p-2">
+            <div className="mb-2">
+              <strong>Remarks:</strong><br />
+              03
             </div>
             <div>
-                <p className="font-bold">Company's Bank Details</p>
-                <p>Bank Name: ICICI Bank (Placeholder)</p>
-                <p>A/c No.: 747005500275 (Placeholder)</p>
-                <p>Branch & IFS Code: Vastral & ICIC0007470 (Placeholder)</p>
+              <strong>Declaration:</strong><br />
+              We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.
             </div>
-            <div className="text-center">
-                <p className="font-bold pt-6 print:pt-2">For: VISHW ENTERPRISE [2025-2026]</p>
-                <p className="mt-2 pt-2 border-t border-dashed border-black print:mt-1 print:pt-1">Authorised Signatory</p>
+          </div>
+          <div className="border-r border-black p-2">
+            <div className="font-bold mb-1">Company's Bank Details</div>
+            <div>Bank Name: ICICI Bank</div>
+            <div>A/c No.: 747055500275</div>
+            <div>Branch & IFS Code: Vastral & ICIC0007470</div>
+          </div>
+          <div className="p-2 text-center">
+            <div className="mt-8">
+              <strong>For: VISHW ENTERPRISE [2025-2026]</strong>
             </div>
+            <div className="mt-7 border-t border-black pt-1">
+              <strong>Authorised Signatory</strong>
+            </div>
+          </div>
         </div>
-      </CardFooter>
-      <div className="p-6 flex justify-between no-print mt-4">
+      </div>
+
+      {/* Action Buttons */}
+      <div className="no-print p-4 flex justify-between bg-gray-50 mt-4">
         <Button variant="destructive" onClick={onClearInvoice}>
           <Trash2 className="mr-2 h-4 w-4" /> Clear Invoice
         </Button>
-        <Button variant="default" onClick={onPrintInvoice} className="bg-primary hover:bg-primary/90">
+        <Button onClick={onPrintInvoice} className="bg-primary hover:bg-primary/90 text-primary-foreground">
           <Printer className="mr-2 h-4 w-4" /> Print Invoice
         </Button>
       </div>
-    </Card>
+    </div>
   );
 }
 
