@@ -84,7 +84,7 @@ export default function InvoicePreview({
 
 
   return (
-    <Card className="shadow-lg print-container border-2 border-black">
+    <Card className="shadow-lg print-container border-2 border-black ">
       <CardHeader className="p-4 border-b-2 border-black card-header">
         <h1 className="text-2xl font-bold text-center font-headline mb-2 print:mb-1">TAX INVOICE</h1>
         <div className="grid grid-cols-2 gap-4 text-xs card-header-spacing print:gap-1">
@@ -146,7 +146,7 @@ export default function InvoicePreview({
           </div>
         </div>
         
-        <div className="overflow-x-auto border-x-2 border-black">
+        <div className="overflow-x-auto border-x-1 border-black">
           <Table className="min-w-full print-items-table">
             <TableHeader className="border-b-2 border-black">
               <TableRow>

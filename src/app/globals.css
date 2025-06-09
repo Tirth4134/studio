@@ -101,7 +101,7 @@ body {
     display: none !important;
   }
   .print-container {
-    margin: 0.5cm !important; /* Small margin for the page */
+    margin: 0.1cm !important; /* Reduced margin for the page */
     padding: 0 !important; 
     width: auto !important; /* Allow it to fit page width */
     box-shadow: none !important;
