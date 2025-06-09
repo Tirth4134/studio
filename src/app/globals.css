@@ -1,4 +1,5 @@
 
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -162,7 +163,7 @@ body {
     @apply gap-0.5 p-0.5 my-0.5; /* Reduced gap, padding, and margin */
   }
    .print-container .address-section-spacing > div p,
-   .print-container .address-section-spacing > div input.print-input-as-text {
+   .print-container .address-section-spacing > div .print-text-line { /* Target static text */
      margin-bottom: 0.5px !important; /* Reduced paragraph/input margin */
      line-height: 1.05 !important; /* Tighter line height */
    }
@@ -246,6 +247,7 @@ body {
   }
 
   /* Styles for Input components to look like plain text during print */
+  /* This class is generic for any input intended to look like text on print */
   .print-input-as-text {
     border: none !important;
     padding: 0 !important;
@@ -264,8 +266,16 @@ body {
     min-height: auto !important; /* Override any min-height from default input styles */
     height: auto !important; /* Override any height from default input styles */
   }
-  /* Ensure text inputs also behave */
   .print-input-as-text::placeholder {
     color: transparent !important; /* Hide placeholder on print */
   }
+
+  /* Styles for simple text lines in print */
+  .print-text-line {
+    margin-bottom: 0.5px !important;
+    line-height: 1.05 !important;
+    padding: 0 !important; /* Ensure no extra padding */
+    /* Inherits font size from parent */
+  }
 }
+

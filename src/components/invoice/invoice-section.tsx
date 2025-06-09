@@ -103,7 +103,12 @@ export default function InvoiceSection({
 
   return (
     <div className="space-y-6">
-      <CreateInvoiceForm inventory={inventory} onAddItemToInvoice={handleAddItemToInvoice} />
+      <CreateInvoiceForm
+        inventory={inventory}
+        onAddItemToInvoice={handleAddItemToInvoice}
+        buyerAddress={buyerAddress}
+        setBuyerAddress={setBuyerAddress}
+      />
       <InvoicePreview
         invoiceItems={invoiceItems}
         invoiceNumber={invoiceNumber}
@@ -112,8 +117,8 @@ export default function InvoiceSection({
         onClearInvoice={handleClearInvoice}
         onPrintInvoice={onPrintInvoice}
         buyerAddress={buyerAddress}
-        setBuyerAddress={setBuyerAddress}
       />
     </div>
   );
 }
+

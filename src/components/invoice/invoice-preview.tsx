@@ -5,7 +5,6 @@ import type { InvoiceLineItem, BuyerAddress } from '@/types';
 import { Card, CardContent, CardHeader, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter as UiTableFooter } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input'; // Import Input
 import { Trash2, Printer } from 'lucide-react';
 import type { Dispatch, SetStateAction } from 'react';
 
@@ -18,7 +17,7 @@ interface InvoicePreviewProps {
   onClearInvoice: () => void;
   onPrintInvoice: () => void;
   buyerAddress: BuyerAddress;
-  setBuyerAddress: Dispatch<SetStateAction<BuyerAddress>>;
+  // setBuyerAddress is no longer needed here as editing is moved
 }
 
 const GST_RATE = 0.18; // 18%
@@ -31,7 +30,6 @@ export default function InvoicePreview({
   onClearInvoice,
   onPrintInvoice,
   buyerAddress,
-  setBuyerAddress,
 }: InvoicePreviewProps) {
   const subTotal = invoiceItems.reduce((sum, item) => sum + item.total, 0);
   const taxAmount = subTotal * GST_RATE;
@@ -39,15 +37,51 @@ export default function InvoicePreview({
   const totalQuantity = invoiceItems.reduce((sum, item) => sum + item.quantity, 0);
 
   const numberToWords = (num: number): string => {
-    if (num === 0) return "Zero";
-    return `INR ${num.toFixed(2)} in words (placeholder)`;
+    // This is a placeholder. A real implementation would be more complex.
+    // For example, using a library or a detailed function.
+    // For now, let's return a simple string.
+    const numStr = num.toFixed(2);
+    // Basic placeholder, not a real conversion
+    const mainPart = Math.floor(num);
+    const decimalPart = Math.round((num - mainPart) * 100);
+    let words = `Rupees ${convertToWords(mainPart)}`;
+    if (decimalPart > 0) {
+      words += ` and ${convertToWords(decimalPart)} Paise Only`;
+    } else {
+      words += ` Only`;
+    }
+    return words.replace(/\s+/g, ' ').trim(); // Clean up extra spaces
   };
 
-  const handleAddressChange = (field: keyof BuyerAddress, value: string) => {
-    setBuyerAddress(prev => ({ ...prev, [field]: value }));
+  // Simplified number to words converter (supports up to 99999 for demonstration)
+  const convertToWords = (n: number): string => {
+    if (n === 0) return "Zero";
+    const ones = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine"];
+    const teens = ["Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
+    const tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+
+    let word = "";
+    if (n >= 1000) {
+      word += ones[Math.floor(n / 1000)] + " Thousand ";
+      n %= 1000;
+    }
+    if (n >= 100) {
+      word += ones[Math.floor(n / 100)] + " Hundred ";
+      n %= 100;
+    }
+    if (n >= 20) {
+      word += tens[Math.floor(n / 10)] + " ";
+      n %= 10;
+    } else if (n >= 10) {
+      word += teens[n - 10] + " ";
+      n = 0;
+    }
+    if (n > 0) {
+      word += ones[n] + " ";
+    }
+    return word.trim();
   };
 
-  const inputClass = "print-input-as-text text-xs p-0 m-0 h-auto leading-tight";
 
   return (
     <Card className="shadow-lg print-container border-2 border-black">
@@ -103,12 +137,12 @@ export default function InvoicePreview({
         <div className="mb-2 border-y-2 border-black py-1 address-section-spacing print:my-1">
           <div>
             <p className="font-bold mb-0.5">Buyer (Bill to)</p>
-            <Input value={buyerAddress.name} onChange={(e) => handleAddressChange('name', e.target.value)} placeholder="Buyer Name" className={inputClass} />
-            <Input value={buyerAddress.addressLine1} onChange={(e) => handleAddressChange('addressLine1', e.target.value)} placeholder="Address Line 1" className={inputClass} />
-            <Input value={buyerAddress.addressLine2} onChange={(e) => handleAddressChange('addressLine2', e.target.value)} placeholder="Address Line 2 / City" className={inputClass} />
-            <Input value={buyerAddress.gstin} onChange={(e) => handleAddressChange('gstin', e.target.value)} placeholder="GSTIN/UIN" className={inputClass} />
-            <Input value={buyerAddress.stateNameAndCode} onChange={(e) => handleAddressChange('stateNameAndCode', e.target.value)} placeholder="State Name, Code" className={inputClass} />
-            <Input value={buyerAddress.contact} onChange={(e) => handleAddressChange('contact', e.target.value)} placeholder="Contact" className={inputClass} />
+            <p className="print-text-line">{buyerAddress.name || 'N/A'}</p>
+            <p className="print-text-line">{buyerAddress.addressLine1 || 'N/A'}</p>
+            <p className="print-text-line">{buyerAddress.addressLine2 || 'N/A'}</p>
+            <p className="print-text-line">GSTIN/UIN: {buyerAddress.gstin || 'N/A'}</p>
+            <p className="print-text-line">State: {buyerAddress.stateNameAndCode || 'N/A'}</p>
+            <p className="print-text-line">Contact: {buyerAddress.contact || 'N/A'}</p>
           </div>
         </div>
         
@@ -238,3 +272,4 @@ export default function InvoicePreview({
     </Card>
   );
 }
+
