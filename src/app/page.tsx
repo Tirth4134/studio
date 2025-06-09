@@ -39,19 +39,37 @@ export default function HomePage() {
   const [currentInvoiceNumber, setCurrentInvoiceNumber] = useState('');
   const [isShortcutsDialogOpen, setIsShortcutsDialogOpen] = useState(false);
   const { toast } = useToast();
+  const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
-    if (inventory.length === 0) {
+    setIsClient(true); // Signal that component has mounted on client
+  }, []);
+
+
+  useEffect(() => {
+    // Initialize inventory with default items only on the client,
+    // and only if the inventory (from localStorage or defaultValue) is currently empty.
+    if (isClient && inventory.length === 0) {
       setInventory(initialInventory);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Run only once on mount to initialize if empty
+  }, [isClient, inventory.length, setInventory]); // Depend on inventory.length to re-check if it becomes empty
 
   useEffect(() => {
     const today = new Date();
-    setInvoiceDate(today.toLocaleDateString());
+    setInvoiceDate(today.toLocaleDateString()); // This can cause hydration mismatch if server and client locales differ for date.
+                                               // Consider formatting date consistently or doing it client-side only.
     setCurrentInvoiceNumber(generateInvoiceNumber(invoiceCounter));
   }, [invoiceCounter]);
+
+  // To prevent hydration mismatch for invoiceDate due to locale differences:
+  useEffect(() => {
+    if (isClient) {
+      const today = new Date();
+      setInvoiceDate(today.toLocaleDateString());
+    }
+  }, [isClient]);
+
 
   const handlePrintInvoice = useCallback(() => {
     if (invoiceItems.length === 0) {
@@ -140,8 +158,8 @@ export default function HomePage() {
         toast({ title: "New Invoice", description: "Invoice is already empty.", variant: "default" });
     }
     setBuyerAddress(initialBuyerAddress); // Reset buyer address for new invoice
-    setInvoiceCounter(prev => prev + 1); 
-  }, [invoiceItems, setInventory, setInvoiceItems, setInvoiceCounter, setBuyerAddress, toast]);
+    // setInvoiceCounter(prev => prev + 1); // This was moved to print
+  }, [invoiceItems, setInventory, setInvoiceItems, setBuyerAddress, toast]);
 
 
   useEffect(() => {
@@ -170,6 +188,16 @@ export default function HomePage() {
     };
   }, [handlePrintInvoice, clearCurrentInvoice]);
 
+  // Render a placeholder or null until the client has mounted
+  // This helps ensure the initial client render matches the server render for components
+  // that rely heavily on client-side state like localStorage.
+  if (!isClient) {
+    // You can return a loader or null. For this app, returning null might be okay
+    // as the main structure is simple. Or a basic skeleton.
+    // For InventoryTable, the server renders "No items..." if inventory is empty.
+    // The updated useLocalStorage ensures client's initial inventory is also empty.
+    return null; 
+  }
 
   return (
     <div className="min-h-screen flex flex-col">
