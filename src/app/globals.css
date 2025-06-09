@@ -87,7 +87,7 @@ body {
 }
 
 @media print {
-  body {
+  html, body { /* Added html to this selector */
     background-color: white !important;
     color: black !important;
     -webkit-print-color-adjust: exact !important;
@@ -96,8 +96,22 @@ body {
     line-height: 1.1 !important; /* Tighter line height */
     margin: 0 !important;
     padding: 0 !important;
-    width: 100% !important; /* Ensure body takes full width */
+    width: 100% !important;
+    height: 100% !important; /* Attempt to use full page height */
+    box-sizing: border-box !important;
   }
+
+  /* Target the main div Next.js wraps content with, usually first child of body */
+  body > div:first-child {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    box-sizing: border-box !important;
+    display: flex !important; /* Allow main to potentially grow */
+    flex-direction: column !important;
+  }
+
 
   /* Ensure the main content area doesn't have restrictive padding/margins from Tailwind's 'container' or 'mx-auto' */
   main.container, main {
@@ -105,6 +119,11 @@ body {
     padding: 0 !important;
     margin: 0 !important;
     width: 100% !important;
+    /* height: 100% !important; /* Let content flow or use flex-grow if main's parent is flex */
+    flex-grow: 1 !important; /* If body > div:first-child is flex column, main can grow */
+    box-sizing: border-box !important;
+    display: flex !important; /* To allow print-container to potentially grow */
+    flex-direction: column !important;
   }
 
   .no-print {
@@ -115,14 +134,26 @@ body {
     margin: 0 !important; /* No margin around the invoice card itself */
     padding: 0 !important; 
     width: 100% !important; /* Make the invoice card take full available width */
+    flex-grow: 1 !important; /* Allow print-container to fill height if its parent (main via InvoiceSection) is flex */
     box-sizing: border-box !important; /* Include padding and border in the element's total width and height */
     box-shadow: none !important;
     border: 1px solid black !important; /* This border will be at the very edge */
     color: black !important;
     font-size: 8.5px !important; /* Smaller font inside container */
     min-height: 0 !important; /* remove min-height if any */
+    display: flex !important;
+    flex-direction: column !important;
   }
 
+  .print-container > .card-header,
+  .print-container > .card-content,
+  .print-container > .card-footer {
+    padding: 0.15rem !important; /* Reduced padding for card sections */
+  }
+  .print-container > .card-content {
+    flex-grow: 1; /* Allow content to expand if card-header/footer are fixed height */
+  }
+  
   .print-container *, .print-container *::before, .print-container *::after {
       color: black !important;
       border-color: black !important;
@@ -140,7 +171,7 @@ body {
   .print-container .card-header,
   .print-container .card-content,
   .print-container .card-footer {
-    padding: 0.15rem !important; /* Reduced padding for card sections */
+    /* padding: 0.15rem !important; /* Already set above for direct children */
   }
   
   .print-container .card-header { border-bottom-width: 1px !important; }
