@@ -1,3 +1,4 @@
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -90,37 +91,69 @@ body {
     color: black !important;
     -webkit-print-color-adjust: exact; /* Chrome, Safari, Edge */
     print-color-adjust: exact; /* Firefox */
+    font-size: 10px; /* Smaller base font for print */
   }
   .no-print {
     display: none !important;
   }
   .print-container {
-    margin: 0;
-    padding: 0;
-    width: 100%;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
     box-shadow: none !important;
-    border: none !important;
+    border: 2px solid black !important; /* Ensure border prints */
+    color: black !important;
   }
+  .print-force-black {
+    color: black !important;
+    border-color: black !important;
+  }
+  .print-force-black p,
+  .print-force-black div,
+  .print-force-black span,
+  .print-force-black td,
+  .print-force-black th,
+  .print-force-black h1,
+  .print-force-black h2,
+  .print-force-black label {
+    color: black !important;
+    border-color: black !important;
+  }
+
   .print-card-header {
-    background-color: hsl(var(--primary)) !important;
-    color: hsl(var(--primary-foreground)) !important;
+    background-color: transparent !important; /* Remove background for print header */
+    color: black !important;
+    border-bottom: 2px solid black !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
    .print-table-header th {
-    background-color: #343a40 !important; /* Corresponds to table-dark */
-    color: white !important;
+    background-color: #e9ecef !important; /* Light gray for table header */
+    color: black !important;
+    border: 1px solid black !important;
+    font-weight: bold;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
-  .print-grand-total-row {
-    background-color: #d1e7dd !important; /* Corresponds to table-success */
+  .print-table-header td { /* Ensure td within header also gets styles if used */
+    border: 1px solid black !important;
+  }
+  table, th, td {
+    border: 1px solid black !important; /* Ensure all table borders print */
+  }
+  .print-grand-total-row td {
+    font-weight: bold !important;
+    background-color: #f8f9fa !important; /* Very light grey for grand total */
     color: black !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
-  .card {
+  .card { /* This might be too generic, ensure it applies to the main invoice card */
     box-shadow: none !important;
-    border: 1px solid #dee2e6 !important; /* Add subtle border for print */
+    border: 2px solid black !important;
+  }
+   img { /* Ensure images print if any are used beyond placeholders */
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 }

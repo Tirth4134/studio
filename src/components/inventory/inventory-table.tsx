@@ -1,15 +1,20 @@
+
 "use client";
 
 import type { InventoryItem } from '@/types';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Button } from '@/components/ui/button';
+import { Edit, Trash2 } from 'lucide-react';
 
 interface InventoryTableProps {
   items: InventoryItem[];
+  onEditItem: (item: InventoryItem) => void;
+  onDeleteItem: (itemId: string) => void;
 }
 
-export default function InventoryTable({ items }: InventoryTableProps) {
+export default function InventoryTable({ items, onEditItem, onDeleteItem }: InventoryTableProps) {
   return (
     <ScrollArea className="h-[400px] rounded-md border">
       <Table>
@@ -21,12 +26,13 @@ export default function InventoryTable({ items }: InventoryTableProps) {
             <TableHead className="text-right">Price</TableHead>
             <TableHead className="text-right">Stock</TableHead>
             <TableHead>Status</TableHead>
+            <TableHead className="text-center">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {items.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={6} className="text-center">No items in inventory.</TableCell>
+              <TableCell colSpan={7} className="text-center">No items in inventory.</TableCell>
             </TableRow>
           ) : (
             items.map((item) => (
@@ -49,6 +55,16 @@ export default function InventoryTable({ items }: InventoryTableProps) {
                     <Badge variant="default" className="bg-green-600 hover:bg-green-700">In Stock</Badge>
                   )}
                 </TableCell>
+                <TableCell className="text-center space-x-2">
+                  <Button variant="outline" size="icon" onClick={() => onEditItem(item)}>
+                    <Edit className="h-4 w-4" />
+                    <span className="sr-only">Edit Item</span>
+                  </Button>
+                  <Button variant="destructive" size="icon" onClick={() => onDeleteItem(item.id)}>
+                    <Trash2 className="h-4 w-4" />
+                    <span className="sr-only">Delete Item</span>
+                  </Button>
+                </TableCell>
               </TableRow>
             ))
           )}
@@ -57,3 +73,4 @@ export default function InventoryTable({ items }: InventoryTableProps) {
     </ScrollArea>
   );
 }
+
