@@ -1,19 +1,22 @@
 
 "use client";
 
-import type { InventoryItem, InvoiceLineItem } from '@/types';
+import type { InventoryItem, InvoiceLineItem, BuyerAddress } from '@/types';
 import CreateInvoiceForm from './create-invoice-form';
 import InvoicePreview from './invoice-preview';
 import { useToast } from '@/hooks/use-toast';
+import type { Dispatch, SetStateAction } from 'react';
 
 interface InvoiceSectionProps {
   inventory: InventoryItem[];
-  setInventory: React.Dispatch<React.SetStateAction<InventoryItem[]>>;
+  setInventory: Dispatch<SetStateAction<InventoryItem[]>>;
   invoiceItems: InvoiceLineItem[];
-  setInvoiceItems: React.Dispatch<React.SetStateAction<InvoiceLineItem[]>>;
+  setInvoiceItems: Dispatch<SetStateAction<InvoiceLineItem[]>>;
   invoiceNumber: string;
   invoiceDate: string;
   onPrintInvoice: () => void;
+  buyerAddress: BuyerAddress;
+  setBuyerAddress: Dispatch<SetStateAction<BuyerAddress>>;
 }
 
 export default function InvoiceSection({
@@ -24,14 +27,16 @@ export default function InvoiceSection({
   invoiceNumber,
   invoiceDate,
   onPrintInvoice,
+  buyerAddress,
+  setBuyerAddress,
 }: InvoiceSectionProps) {
   const { toast } = useToast();
 
   const handleAddItemToInvoice = (itemToAdd: InvoiceLineItem) => {
     const existingItemIndex = invoiceItems.findIndex(invItem => invItem.id === itemToAdd.id);
+    const inventoryItem = inventory.find(inv => inv.id === itemToAdd.id);
 
     if (existingItemIndex !== -1) {
-      // Item already exists, update quantity and total
       setInvoiceItems(prevItems =>
         prevItems.map((item, index) =>
           index === existingItemIndex
@@ -44,11 +49,10 @@ export default function InvoiceSection({
         )
       );
     } else {
-      // New item, add to invoice
-      setInvoiceItems(prevItems => [...prevItems, itemToAdd]);
+      // Add category to the invoice line item when it's first added
+      setInvoiceItems(prevItems => [...prevItems, { ...itemToAdd, category: inventoryItem?.category }]);
     }
 
-    // Update inventory stock for the quantity just added/updated
     setInventory(prevInventory =>
       prevInventory.map(invItem =>
         invItem.id === itemToAdd.id
@@ -64,14 +68,11 @@ export default function InvoiceSection({
   };
 
   const handleRemoveItemFromInvoice = (itemIdToRemove: string, quantityToReturn: number) => {
-     // Update inventory stock
     setInventory((prevInventory) =>
       prevInventory.map((invItem) =>
         invItem.id === itemIdToRemove ? { ...invItem, stock: invItem.stock + quantityToReturn } : invItem
       )
     );
-    // Remove item from invoice
-    // Since items are consolidated by ID by handleAddItemToInvoice, a simple filter is sufficient.
     setInvoiceItems((prevItems) => prevItems.filter((item) => item.id !== itemIdToRemove));
 
     toast({ title: "Success", description: "Item removed from invoice." });
@@ -82,7 +83,6 @@ export default function InvoiceSection({
       toast({ title: "Info", description: "Invoice is already empty.", variant: "default" });
       return;
     }
-    // Return stock for all items in the invoice
     setInventory(prevInventory => {
       const newInventory = [...prevInventory];
       invoiceItems.forEach(invoiceItem => {
@@ -111,6 +111,8 @@ export default function InvoiceSection({
         onRemoveItem={handleRemoveItemFromInvoice}
         onClearInvoice={handleClearInvoice}
         onPrintInvoice={onPrintInvoice}
+        buyerAddress={buyerAddress}
+        setBuyerAddress={setBuyerAddress}
       />
     </div>
   );

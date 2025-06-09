@@ -1,7 +1,8 @@
+
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
-import type { InventoryItem, InvoiceLineItem, AppData } from '@/types';
+import type { InventoryItem, InvoiceLineItem, AppData, BuyerAddress } from '@/types';
 import useLocalStorage from '@/hooks/use-local-storage';
 import AppHeader from '@/components/layout/app-header';
 import InventorySection from '@/components/inventory/inventory-section';
@@ -17,10 +18,21 @@ const initialInventory: InventoryItem[] = [
   { id: generateUniqueId(), category: "Accessories", name: "Wireless Charger", price: 49.99, stock: 25, description: "Qi-certified wireless charging pad." },
 ];
 
+const initialBuyerAddress: BuyerAddress = {
+  name: 'NEELKANTH ELECTRICAL (Placeholder)',
+  addressLine1: 'SHOP NO 15 N KARCADE, NR NK-3 IND PARK',
+  addressLine2: 'BAKROL (Placeholder)',
+  gstin: '24AAXFN4403B1ZH (Placeholder)',
+  stateNameAndCode: 'Gujarat, Code: 24 (Placeholder)',
+  contact: '9313647568 (Placeholder)',
+};
+
+
 export default function HomePage() {
   const [inventory, setInventory] = useLocalStorage<InventoryItem[]>('inventoryItems', []);
   const [invoiceItems, setInvoiceItems] = useLocalStorage<InvoiceLineItem[]>('currentInvoiceItems', []);
   const [invoiceCounter, setInvoiceCounter] = useLocalStorage<number>('invoiceCounter', 1);
+  const [buyerAddress, setBuyerAddress] = useLocalStorage<BuyerAddress>('currentBuyerAddress', initialBuyerAddress);
   
   const [activeSection, setActiveSection] = useState('inventory'); // 'inventory' or 'invoice'
   const [invoiceDate, setInvoiceDate] = useState('');
@@ -56,6 +68,7 @@ export default function HomePage() {
     const appData: AppData = {
       items: inventory,
       invoiceCounter: invoiceCounter,
+      buyerAddress: buyerAddress, // Include buyer address in export
     };
     const dataStr = JSON.stringify(appData, null, 2);
     const dataBlob = new Blob([dataStr], { type: 'application/json' });
@@ -79,9 +92,15 @@ export default function HomePage() {
       try {
         const result = e.target?.result as string;
         const data = JSON.parse(result) as AppData;
+        // Check for core properties and optionally for buyerAddress
         if (data.items && Array.isArray(data.items) && typeof data.invoiceCounter === 'number') {
           setInventory(data.items);
           setInvoiceCounter(data.invoiceCounter);
+          if (data.buyerAddress) { // If buyerAddress exists in imported file, use it
+            setBuyerAddress(data.buyerAddress);
+          } else { // Otherwise, reset to initial or keep current
+            setBuyerAddress(initialBuyerAddress); // Or keep current: remove this line
+          }
           setInvoiceItems([]); // Clear current invoice on import
           toast({ title: "Success", description: "Data imported successfully. Current invoice cleared." });
         } else {
@@ -101,9 +120,7 @@ export default function HomePage() {
   };
 
   const clearCurrentInvoice = useCallback(() => {
-    // This function is primarily for the Ctrl+N shortcut
-    // It needs to return stock if there are items
-     if (invoiceItems.length > 0) {
+    if (invoiceItems.length > 0) {
         setInventory(prevInventory => {
             const newInventory = [...prevInventory];
             invoiceItems.forEach(invoiceItem => {
@@ -122,9 +139,9 @@ export default function HomePage() {
     } else {
         toast({ title: "New Invoice", description: "Invoice is already empty.", variant: "default" });
     }
-    // Optionally, generate new invoice number immediately
+    setBuyerAddress(initialBuyerAddress); // Reset buyer address for new invoice
     setInvoiceCounter(prev => prev + 1); 
-  }, [invoiceItems, setInventory, setInvoiceItems, setInvoiceCounter, toast]);
+  }, [invoiceItems, setInventory, setInvoiceItems, setInvoiceCounter, setBuyerAddress, toast]);
 
 
   useEffect(() => {
@@ -177,6 +194,8 @@ export default function HomePage() {
             invoiceNumber={currentInvoiceNumber}
             invoiceDate={invoiceDate}
             onPrintInvoice={handlePrintInvoice}
+            buyerAddress={buyerAddress}
+            setBuyerAddress={setBuyerAddress}
           />
         )}
       </main>

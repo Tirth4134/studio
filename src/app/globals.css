@@ -131,7 +131,6 @@ body {
   }
   
   .print-container .card-header { border-bottom-width: 1px !important; }
-  /* Removed top/bottom borders from card-content as items table will have its own */
   .print-container .card-content { } 
   .print-container .card-footer { border-top-width: 1px !important; }
 
@@ -162,8 +161,9 @@ body {
   .print-container .address-section-spacing {
     @apply gap-0.5 p-0.5 my-0.5; /* Reduced gap, padding, and margin */
   }
-   .print-container .address-section-spacing > div p {
-     margin-bottom: 0.5px !important; /* Reduced paragraph margin */
+   .print-container .address-section-spacing > div p,
+   .print-container .address-section-spacing > div input.print-input-as-text {
+     margin-bottom: 0.5px !important; /* Reduced paragraph/input margin */
      line-height: 1.05 !important; /* Tighter line height */
    }
 
@@ -210,11 +210,6 @@ body {
       font-size: 7.5px !important; /* Reduced font size */
       line-height: 1.05 !important; /* Tighter line height */
   }
-  .print-container .invoice-footer-grid img { /* This style will no longer apply as image is removed */
-    max-height: 20px !important; 
-    width: auto !important;
-    margin-bottom: 0.05rem !important;
-  }
   
   .print-container .border, .print-container .border-b, .print-container .border-t, .print-container .border-l, .print-container .border-r,
   .print-container .border-2, .print-container .border-b-2, .print-container .border-t-2, .print-container .border-x-2, .print-container .border-y-2 {
@@ -250,5 +245,27 @@ body {
     border-top-width: 1px !important;
   }
 
+  /* Styles for Input components to look like plain text during print */
+  .print-input-as-text {
+    border: none !important;
+    padding: 0 !important;
+    margin-bottom: 0.5px !important; /* Small margin for line spacing */
+    font: inherit !important; /* Use the print font size and family */
+    line-height: 1.05 !important; /* Match surrounding text */
+    background-color: transparent !important;
+    box-shadow: none !important;
+    color: black !important; /* Ensure text is black */
+    -webkit-appearance: none; /* Remove default browser styling */
+    -moz-appearance: none;
+    appearance: none;
+    width: 100% !important; /* Make it take up available width in its container */
+    resize: none; /* For textareas, if any */
+    outline: none !important; /* Remove focus outline on print */
+    min-height: auto !important; /* Override any min-height from default input styles */
+    height: auto !important; /* Override any height from default input styles */
+  }
+  /* Ensure text inputs also behave */
+  .print-input-as-text::placeholder {
+    color: transparent !important; /* Hide placeholder on print */
+  }
 }
-

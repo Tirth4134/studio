@@ -1,12 +1,14 @@
 
 "use client";
 
-import type { InvoiceLineItem } from '@/types';
+import type { InvoiceLineItem, BuyerAddress } from '@/types';
 import { Card, CardContent, CardHeader, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter as UiTableFooter } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input'; // Import Input
 import { Trash2, Printer } from 'lucide-react';
-// Removed Image import as it's no longer used for the signature
+import type { Dispatch, SetStateAction } from 'react';
+
 
 interface InvoicePreviewProps {
   invoiceItems: InvoiceLineItem[];
@@ -15,9 +17,10 @@ interface InvoicePreviewProps {
   onRemoveItem: (itemId: string, quantity: number) => void;
   onClearInvoice: () => void;
   onPrintInvoice: () => void;
+  buyerAddress: BuyerAddress;
+  setBuyerAddress: Dispatch<SetStateAction<BuyerAddress>>;
 }
 
-// Dummy tax rate for display
 const GST_RATE = 0.18; // 18%
 
 export default function InvoicePreview({
@@ -27,6 +30,8 @@ export default function InvoicePreview({
   onRemoveItem,
   onClearInvoice,
   onPrintInvoice,
+  buyerAddress,
+  setBuyerAddress,
 }: InvoicePreviewProps) {
   const subTotal = invoiceItems.reduce((sum, item) => sum + item.total, 0);
   const taxAmount = subTotal * GST_RATE;
@@ -35,17 +40,20 @@ export default function InvoicePreview({
 
   const numberToWords = (num: number): string => {
     if (num === 0) return "Zero";
-    // This is a highly simplified placeholder
     return `INR ${num.toFixed(2)} in words (placeholder)`;
   };
 
+  const handleAddressChange = (field: keyof BuyerAddress, value: string) => {
+    setBuyerAddress(prev => ({ ...prev, [field]: value }));
+  };
+
+  const inputClass = "print-input-as-text text-xs p-0 m-0 h-auto leading-tight";
 
   return (
     <Card className="shadow-lg print-container border-2 border-black">
       <CardHeader className="p-4 border-b-2 border-black card-header">
         <h1 className="text-2xl font-bold text-center font-headline mb-2 print:mb-1">TAX INVOICE</h1>
         <div className="grid grid-cols-2 gap-4 text-xs card-header-spacing print:gap-1">
-          {/* Seller Info */}
           <div>
             <p className="font-bold">VISHW ENTERPRISE [2025-2026]</p>
             <p>5, SAHAJ COMMERCIAL CORNER,</p>
@@ -58,7 +66,6 @@ export default function InvoicePreview({
             <p>State Name: Gujarat, Code: 24</p>
             <p>E-Mail: vishw_enterprise@yahoo.in</p>
           </div>
-          {/* Invoice Metadata */}
           <div className="border border-black p-1 invoice-meta-table">
             <div className="grid grid-cols-2 border-b border-black">
                 <div className="font-bold p-1 border-r border-black">Invoice No.</div>
@@ -94,15 +101,14 @@ export default function InvoicePreview({
 
       <CardContent className="p-4 text-xs card-content print:p-1">
         <div className="mb-2 border-y-2 border-black py-1 address-section-spacing print:my-1">
-          {/* Consignee (Ship to) section removed */}
-          {/* Buyer (Bill to) section now takes full width or is positioned left */}
           <div>
-            <p className="font-bold">Buyer (Bill to)</p>
-            <p>NEELKANTH ELECTRICAL (Placeholder)</p>
-            <p>SHOP NO 15 N KARCADE, NR NK-3 IND PARK, BAKROL (Placeholder)</p>
-            <p>GSTIN/UIN: 24AAXFN4403B1ZH (Placeholder)</p>
-            <p>State Name: Gujarat, Code: 24 (Placeholder)</p>
-            <p>Contact: 9313647568 (Placeholder)</p>
+            <p className="font-bold mb-0.5">Buyer (Bill to)</p>
+            <Input value={buyerAddress.name} onChange={(e) => handleAddressChange('name', e.target.value)} placeholder="Buyer Name" className={inputClass} />
+            <Input value={buyerAddress.addressLine1} onChange={(e) => handleAddressChange('addressLine1', e.target.value)} placeholder="Address Line 1" className={inputClass} />
+            <Input value={buyerAddress.addressLine2} onChange={(e) => handleAddressChange('addressLine2', e.target.value)} placeholder="Address Line 2 / City" className={inputClass} />
+            <Input value={buyerAddress.gstin} onChange={(e) => handleAddressChange('gstin', e.target.value)} placeholder="GSTIN/UIN" className={inputClass} />
+            <Input value={buyerAddress.stateNameAndCode} onChange={(e) => handleAddressChange('stateNameAndCode', e.target.value)} placeholder="State Name, Code" className={inputClass} />
+            <Input value={buyerAddress.contact} onChange={(e) => handleAddressChange('contact', e.target.value)} placeholder="Contact" className={inputClass} />
           </div>
         </div>
         
@@ -130,7 +136,7 @@ export default function InvoicePreview({
                   <TableRow key={`${item.id}-${index}`} className="border-b border-black">
                     <TableCell className="slno-col border-r border-black">{index + 1}</TableCell>
                     <TableCell className="description-col border-r border-black">{item.name}</TableCell>
-                    <TableCell className="hsn-col border-r border-black">{item.category}</TableCell>
+                    <TableCell className="hsn-col border-r border-black">{item.category || 'N/A'}</TableCell>
                     <TableCell className="quantity-col text-right border-r border-black">{item.quantity}</TableCell>
                     <TableCell className="rate-col text-right border-r border-black">${item.price.toFixed(2)}</TableCell>
                     <TableCell className="per-col text-right border-r border-black">PCS</TableCell>
@@ -201,8 +207,6 @@ export default function InvoicePreview({
          <div className="mt-1 text-xs print:mt-0.5">
             <p><span className="font-bold">Tax Amount (in words):</span> {numberToWords(taxAmount)}</p>
         </div>
-
-
       </CardContent>
       <CardFooter className="p-4 text-xs border-t-2 border-black card-footer print:p-1">
         <div className="grid grid-cols-3 gap-4 w-full invoice-footer-grid print:gap-1">
@@ -218,7 +222,6 @@ export default function InvoicePreview({
                 <p>Branch & IFS Code: Vastral & ICIC0007470 (Placeholder)</p>
             </div>
             <div className="text-center">
-                 {/* Signature placeholder image removed */}
                 <p className="font-bold pt-6 print:pt-2">For: VISHW ENTERPRISE [2025-2026]</p>
                 <p className="mt-2 pt-2 border-t border-dashed border-black print:mt-1 print:pt-1">Authorised Signatory</p>
             </div>
@@ -235,4 +238,3 @@ export default function InvoicePreview({
     </Card>
   );
 }
-
