@@ -96,16 +96,28 @@ body {
     line-height: 1.1 !important; /* Tighter line height */
     margin: 0 !important;
     padding: 0 !important;
+    width: 100% !important; /* Ensure body takes full width */
   }
+
+  /* Ensure the main content area doesn't have restrictive padding/margins from Tailwind's 'container' or 'mx-auto' */
+  main.container, main {
+    max-width: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+  }
+
   .no-print {
     display: none !important;
   }
+
   .print-container {
-    margin: 0.1cm !important; /* Reduced margin for the page */
+    margin: 0 !important; /* No margin around the invoice card itself */
     padding: 0 !important; 
-    width: auto !important; /* Allow it to fit page width */
+    width: 100% !important; /* Make the invoice card take full available width */
+    box-sizing: border-box !important; /* Include padding and border in the element's total width and height */
     box-shadow: none !important;
-    border: 1px solid black !important;
+    border: 1px solid black !important; /* This border will be at the very edge */
     color: black !important;
     font-size: 8.5px !important; /* Smaller font inside container */
     min-height: 0 !important; /* remove min-height if any */
