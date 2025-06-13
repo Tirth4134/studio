@@ -116,10 +116,6 @@ export default function AddItemForm({ onAddItem }: AddItemFormProps) {
            <div className="space-y-2">
             <Label htmlFor="description">Description (Optional)</Label>
             <Textarea id="description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Enter item description or use AI to enrich it." />
-            <Button type="button" variant="outline" onClick={handleEnrichDescription} disabled={isEnriching}>
-              {isEnriching ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4 text-yellow-500" />}
-              Enrich Description
-            </Button>
           </div>
         </form>
       </CardContent>

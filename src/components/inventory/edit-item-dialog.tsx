@@ -118,10 +118,6 @@ export default function EditItemDialog({ isOpen, onOpenChange, itemToEdit, onUpd
           <div className="space-y-2">
             <Label htmlFor="edit-description">Description</Label>
             <Textarea id="edit-description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Item description" />
-             <Button type="button" variant="outline" onClick={handleEnrichDescription} disabled={isEnriching}>
-              {isEnriching ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4 text-yellow-500" />}
-              Enrich Description
-            </Button>
           </div>
           <DialogFooter>
             <DialogClose asChild>
