@@ -1,3 +1,4 @@
+
 "use client";
 
 import React from 'react';
@@ -10,8 +11,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Store, Package, FileText, Printer, Settings, Download, Upload, Keyboard, Info } from 'lucide-react';
-import type { AppData } from '@/types';
+import { Store, Package, FileText, Printer, Settings, Download, Upload, Keyboard } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast'; // Import useToast
 
 interface AppHeaderProps {
   activeSection: string;
@@ -31,13 +32,22 @@ export default function AppHeader({
   onShowShortcuts,
 }: AppHeaderProps) {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const { toast } = useToast(); // Initialize useToast
 
   const handleImportClick = () => {
     fileInputRef.current?.click();
   };
 
+  const handleFileSelected = (event: React.ChangeEvent<HTMLInputElement>) => {
+    toast({
+      title: "DEBUG: AppHeader",
+      description: "File selected, onImportData prop is about to be called.",
+      variant: "default",
+      duration: 5000,
+    });
+    onImportData(event); // Call the prop passed from HomePage
+  };
 
-  
   return (
     <header className="bg-primary text-primary-foreground p-4 no-print shadow-md">
       <div className="container mx-auto flex items-center justify-between">
@@ -83,7 +93,7 @@ export default function AppHeader({
                 ref={fileInputRef}
                 accept=".json"
                 style={{ display: 'none' }}
-                onChange={onImportData}
+                onChange={handleFileSelected} // Use the new handler here
               />
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={onShowShortcuts}>
