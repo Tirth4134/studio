@@ -25,7 +25,7 @@ export default function EditItemDialog({ isOpen, onOpenChange, itemToEdit, onUpd
   const [price, setPrice] = useState('');
   const [stock, setStock] = useState('');
   const [description, setDescription] = useState('');
-  const [isEnriching, setIsEnriching] = useState(false);
+  // const [isEnriching, setIsEnriching] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -70,12 +70,12 @@ export default function EditItemDialog({ isOpen, onOpenChange, itemToEdit, onUpd
        toast({ title: "Info", description: "Please enter Category, Item Name, and Price to enrich description.", variant: "default"});
       return;
     }
-    setIsEnriching(true);
+    // setIsEnriching(true);
     try {
       const numPrice = parseFloat(price);
        if (isNaN(numPrice) || numPrice <=0) {
          toast({ title: "Error", description: "Please enter a valid price.", variant: "destructive" });
-         setIsEnriching(false);
+        //  setIsEnriching(false);
          return;
       }
       const result = await generateItemDescription({ category, itemName, price: numPrice });
@@ -85,7 +85,7 @@ export default function EditItemDialog({ isOpen, onOpenChange, itemToEdit, onUpd
       console.error("Error enriching description:", error);
       toast({ title: "Error", description: "Failed to enrich description.", variant: "destructive" });
     }
-    setIsEnriching(false);
+    // setIsEnriching(false);
   };
 
   if (!itemToEdit) return null;
