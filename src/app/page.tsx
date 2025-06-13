@@ -42,27 +42,21 @@ export default function HomePage() {
   const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
-    setIsClient(true); // Signal that component has mounted on client
+    setIsClient(true); 
   }, []);
 
 
   useEffect(() => {
-    // Initialize inventory with default items only on the client,
-    // and only if the inventory (from localStorage or defaultValue) is currently empty.
     if (isClient && inventory.length === 0) {
       setInventory(initialInventory);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isClient, inventory.length, setInventory]); // Depend on inventory.length to re-check if it becomes empty
+  }, [isClient, inventory.length, setInventory]); 
 
   useEffect(() => {
-    const today = new Date();
-    setInvoiceDate(today.toLocaleDateString()); // This can cause hydration mismatch if server and client locales differ for date.
-                                               // Consider formatting date consistently or doing it client-side only.
     setCurrentInvoiceNumber(generateInvoiceNumber(invoiceCounter));
   }, [invoiceCounter]);
 
-  // To prevent hydration mismatch for invoiceDate due to locale differences:
   useEffect(() => {
     if (isClient) {
       const today = new Date();
@@ -77,7 +71,6 @@ export default function HomePage() {
       return;
     }
     window.print();
-    // Increment invoice counter after successful print intent. Actual success isn't tracked.
     setInvoiceCounter(prev => prev + 1); 
   }, [invoiceItems.length, setInvoiceCounter, toast]);
 
@@ -86,7 +79,7 @@ export default function HomePage() {
     const appData: AppData = {
       items: inventory,
       invoiceCounter: invoiceCounter,
-      buyerAddress: buyerAddress, // Include buyer address in export
+      buyerAddress: buyerAddress, 
     };
     const dataStr = JSON.stringify(appData, null, 2);
     const dataBlob = new Blob([dataStr], { type: 'application/json' });
@@ -101,6 +94,17 @@ export default function HomePage() {
     toast({ title: "Success", description: "Data exported successfully." });
   };
 
+  const mapRawItemToInventoryItem = (rawItem: any): InventoryItem => {
+    return {
+      id: String(rawItem.id || generateUniqueId()), // Ensure ID is a string and generate if missing
+      category: rawItem.category || 'Uncategorized',
+      name: rawItem.name || rawItem.item_name || 'Unnamed Item',
+      price: parseFloat(String(rawItem.price)) || 0,
+      stock: parseInt(String(rawItem.stock), 10) || 0,
+      description: rawItem.description || '',
+    };
+  };
+
   const handleImportData = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -109,29 +113,55 @@ export default function HomePage() {
     reader.onload = (e) => {
       try {
         const result = e.target?.result as string;
-        const data = JSON.parse(result) as AppData;
-        // Check for core properties and optionally for buyerAddress
-        if (data.items && Array.isArray(data.items) && typeof data.invoiceCounter === 'number') {
-          setInventory(data.items);
-          setInvoiceCounter(data.invoiceCounter);
-          if (data.buyerAddress) { // If buyerAddress exists in imported file, use it
-            setBuyerAddress(data.buyerAddress);
-          } else { // Otherwise, reset to initial or keep current
-            setBuyerAddress(initialBuyerAddress); // Or keep current: remove this line
+        const parsedData = JSON.parse(result);
+        let itemsToImport: InventoryItem[] = [];
+        let newInvoiceCounter: number | null = null;
+        let newBuyerAddress: BuyerAddress | null = null;
+
+        if (Array.isArray(parsedData)) {
+          // Case 1: Importing an array of items
+          itemsToImport = parsedData.map(mapRawItemToInventoryItem);
+        } else if (typeof parsedData === 'object' && parsedData !== null && parsedData.items && Array.isArray(parsedData.items)) {
+          // Case 2: Importing an AppData object
+          itemsToImport = parsedData.items.map(mapRawItemToInventoryItem);
+          if (typeof parsedData.invoiceCounter === 'number') {
+            newInvoiceCounter = parsedData.invoiceCounter;
           }
-          setInvoiceItems([]); // Clear current invoice on import
-          toast({ title: "Success", description: "Data imported successfully. Current invoice cleared." });
+          if (parsedData.buyerAddress && typeof parsedData.buyerAddress === 'object') {
+            newBuyerAddress = parsedData.buyerAddress as BuyerAddress;
+          }
         } else {
-          toast({ title: "Error", description: "Invalid file format.", variant: "destructive" });
+          toast({ title: "Error", description: "Invalid file format. Expected an array of items or an AppData object.", variant: "destructive" });
+          return;
         }
+
+        if (itemsToImport.length > 0) {
+          setInventory(prevInventory => [...prevInventory, ...itemsToImport]);
+        }
+        
+        if (newInvoiceCounter !== null) {
+          setInvoiceCounter(newInvoiceCounter);
+        }
+        
+        if (newBuyerAddress !== null) {
+          setBuyerAddress(newBuyerAddress);
+        } else if (parsedData.buyerAddress === undefined && !Array.isArray(parsedData)){
+          // If AppData object was imported but buyerAddress was explicitly missing, reset it
+          setBuyerAddress(initialBuyerAddress);
+        }
+
+        setInvoiceItems([]); 
+        toast({ title: "Success", description: "Data imported successfully. New items appended. Current invoice cleared." });
+
       } catch (error) {
         console.error("Import error:", error);
         toast({ title: "Error", description: "Error reading or parsing file.", variant: "destructive" });
       }
     };
     reader.readAsText(file);
-    event.target.value = ''; // Reset file input
+    event.target.value = ''; 
   };
+
 
   const handleShowShortcuts = () => {
     setIsShortcutsDialogOpen(true);
@@ -153,12 +183,11 @@ export default function HomePage() {
             return newInventory;
         });
         setInvoiceItems([]);
-        toast({ title: "New Invoice", description: "Current invoice cleared." });
+        toast({ title: "New Invoice", description: "Current invoice cleared and stock restored." });
     } else {
         toast({ title: "New Invoice", description: "Invoice is already empty.", variant: "default" });
     }
-    setBuyerAddress(initialBuyerAddress); // Reset buyer address for new invoice
-    // setInvoiceCounter(prev => prev + 1); // This was moved to print
+    setBuyerAddress(initialBuyerAddress); 
   }, [invoiceItems, setInventory, setInvoiceItems, setBuyerAddress, toast]);
 
 
@@ -188,14 +217,7 @@ export default function HomePage() {
     };
   }, [handlePrintInvoice, clearCurrentInvoice]);
 
-  // Render a placeholder or null until the client has mounted
-  // This helps ensure the initial client render matches the server render for components
-  // that rely heavily on client-side state like localStorage.
   if (!isClient) {
-    // You can return a loader or null. For this app, returning null might be okay
-    // as the main structure is simple. Or a basic skeleton.
-    // For InventoryTable, the server renders "No items..." if inventory is empty.
-    // The updated useLocalStorage ensures client's initial inventory is also empty.
     return null; 
   }
 
@@ -208,6 +230,7 @@ export default function HomePage() {
         onExportData={handleExportData}
         onImportData={handleImportData}
         onShowShortcuts={handleShowShortcuts}
+        onNewInvoice={clearCurrentInvoice} 
       />
       <main className="flex-grow container mx-auto p-4 md:p-6">
         {activeSection === 'inventory' && (
@@ -222,6 +245,7 @@ export default function HomePage() {
             invoiceNumber={currentInvoiceNumber}
             invoiceDate={invoiceDate}
             onPrintInvoice={handlePrintInvoice}
+            onClearInvoice={clearCurrentInvoice}
             buyerAddress={buyerAddress}
             setBuyerAddress={setBuyerAddress}
           />
