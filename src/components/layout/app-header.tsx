@@ -35,6 +35,8 @@ export default function AppHeader({
   const handleImportClick = () => {
     fileInputRef.current?.click();
   };
+
+
   
   return (
     <header className="bg-primary text-primary-foreground p-4 no-print shadow-md">

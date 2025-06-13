@@ -42,27 +42,21 @@ export default function HomePage() {
   const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
-    setIsClient(true); // Signal that component has mounted on client
+    setIsClient(true);
   }, []);
 
 
   useEffect(() => {
-    // Initialize inventory with default items only on the client,
-    // and only if the inventory (from localStorage or defaultValue) is currently empty.
     if (isClient && inventory.length === 0) {
       setInventory(initialInventory);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isClient, inventory.length, setInventory]); // Depend on inventory.length to re-check if it becomes empty
+  }, [isClient, inventory.length, setInventory]); 
 
   useEffect(() => {
-    const today = new Date();
-    setInvoiceDate(today.toLocaleDateString()); // This can cause hydration mismatch if server and client locales differ for date.
-                                               // Consider formatting date consistently or doing it client-side only.
     setCurrentInvoiceNumber(generateInvoiceNumber(invoiceCounter));
   }, [invoiceCounter]);
 
-  // To prevent hydration mismatch for invoiceDate due to locale differences:
   useEffect(() => {
     if (isClient) {
       const today = new Date();
@@ -77,7 +71,6 @@ export default function HomePage() {
       return;
     }
     window.print();
-    // Increment invoice counter after successful print intent. Actual success isn't tracked.
     setInvoiceCounter(prev => prev + 1); 
   }, [invoiceItems.length, setInvoiceCounter, toast]);
 
@@ -86,7 +79,7 @@ export default function HomePage() {
     const appData: AppData = {
       items: inventory,
       invoiceCounter: invoiceCounter,
-      buyerAddress: buyerAddress, // Include buyer address in export
+      buyerAddress: buyerAddress,
     };
     const dataStr = JSON.stringify(appData, null, 2);
     const dataBlob = new Blob([dataStr], { type: 'application/json' });
@@ -101,38 +94,220 @@ export default function HomePage() {
     toast({ title: "Success", description: "Data exported successfully." });
   };
 
+  const mapRawItemToInventoryItemEnsuringUniqueId = (
+    rawItem: any,
+    allExistingItemIds: Set<string>, // Combined set of current inventory IDs and IDs from this import batch
+    tempImportedItemIdsForThisBatch: Set<string> // IDs from items processed *in this current import batch*
+  ): InventoryItem | null => {
+    const normalizePrice = (price: any): number => {
+      if (typeof price === 'number') return price;
+      if (typeof price === 'string') {
+        const numStr = price.replace(/[^0-9.]/g, '');
+        const val = parseFloat(numStr);
+        return isNaN(val) ? NaN : val;
+      }
+      return NaN;
+    };
+  
+    const normalizeStock = (stock: any): number => {
+      if (typeof stock === 'number') return Math.floor(stock);
+      if (typeof stock === 'string') {
+        const val = parseInt(stock, 10);
+        return isNaN(val) ? NaN : val;
+      }
+      return NaN;
+    };
+
+    const name = rawItem.name || rawItem.item_name || rawItem.itemName || rawItem['Item Name'];
+    const category = rawItem.category || rawItem.Category;
+    const price = normalizePrice(rawItem.price || rawItem.Price);
+    const stock = normalizeStock(rawItem.stock || rawItem.Stock);
+    const description = rawItem.description || rawItem.Description || '';
+  
+    if (!name || typeof name !== 'string' || name.trim() === '') return null;
+    if (isNaN(price) || price < 0) return null;
+    if (isNaN(stock) || stock < 0) return null;
+    if (!category || typeof category !== 'string' || category.trim() === '') return null;
+
+    let finalId = rawItem.id || generateUniqueId();
+    // Ensure ID is unique against ALL known IDs (current inventory + previously processed in this batch)
+    while (allExistingItemIds.has(finalId) || tempImportedItemIdsForThisBatch.has(finalId)) {
+      finalId = generateUniqueId();
+    }
+    // Add to this batch's ID set *after* ensuring it's unique against prior items in batch
+    tempImportedItemIdsForThisBatch.add(finalId); 
+  
+    return {
+      id: finalId,
+      name: name.trim(),
+      category: category.trim(),
+      price,
+      stock,
+      description: typeof description === 'string' ? description.trim() : '',
+    };
+  };
+
+
   const handleImportData = (event: React.ChangeEvent<HTMLInputElement>) => {
+    toast({ title: "DEBUG", description: "handleImportData called in page.tsx" }); // <-- DIAGNOSTIC TOAST
+
     const file = event.target.files?.[0];
-    if (!file) return;
+    if (!file) {
+      toast({ title: "Import Cancelled", description: "No file selected.", variant: "default" });
+      if (event.target) {
+        (event.target as HTMLInputElement).value = ''; // Reset if no file selected.
+      }
+      return;
+    }
+
+    const MAX_FILE_SIZE_MB = 5;
+    if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
+      toast({
+        title: 'File Too Large',
+        description: `Please select a file smaller than ${MAX_FILE_SIZE_MB}MB.`,
+        variant: 'destructive',
+      });
+      if (event.target) {
+        (event.target as HTMLInputElement).value = '';
+      }
+      return;
+    }
 
     const reader = new FileReader();
+
     reader.onload = (e) => {
       try {
         const result = e.target?.result as string;
-        const data = JSON.parse(result) as AppData;
-        // Check for core properties and optionally for buyerAddress
-        if (data.items && Array.isArray(data.items) && typeof data.invoiceCounter === 'number') {
-          setInventory(data.items);
-          setInvoiceCounter(data.invoiceCounter);
-          if (data.buyerAddress) { // If buyerAddress exists in imported file, use it
-            setBuyerAddress(data.buyerAddress);
-          } else { // Otherwise, reset to initial or keep current
-            setBuyerAddress(initialBuyerAddress); // Or keep current: remove this line
-          }
-          setInvoiceItems([]); // Clear current invoice on import
-          toast({ title: "Success", description: "Data imported successfully. Current invoice cleared." });
-        } else {
-          toast({ title: "Error", description: "Invalid file format.", variant: "destructive" });
+        if (!result) {
+          throw new Error("File content is empty or unreadable.");
         }
-      } catch (error) {
-        console.error("Import error:", error);
-        toast({ title: "Error", description: "Error reading or parsing file.", variant: "destructive" });
+        
+        const parsedData = JSON.parse(result);
+        let parsedItems: any[] = [];
+        let importedInvoiceCounter: number | undefined = undefined;
+        let importedBuyerAddress: BuyerAddress | undefined = undefined;
+
+        if (Array.isArray(parsedData)) { // Case 1: File is just an array of items
+          parsedItems = parsedData;
+        } else if (typeof parsedData === 'object' && parsedData !== null) { // Case 2: File is an AppData object
+          if (Array.isArray(parsedData.items)) {
+            parsedItems = parsedData.items;
+          }
+          if (typeof parsedData.invoiceCounter === 'number') {
+            importedInvoiceCounter = parsedData.invoiceCounter;
+          }
+          if (typeof parsedData.buyerAddress === 'object' && parsedData.buyerAddress !== null) {
+            importedBuyerAddress = parsedData.buyerAddress;
+          }
+        } else {
+          throw new Error("Invalid JSON structure. Expected an array of items or an object with an 'items' array.");
+        }
+
+        if (parsedItems.length === 0 && importedInvoiceCounter === undefined && importedBuyerAddress === undefined) {
+          toast({ title: "No Data Found", description: "The file does not contain items, invoice counter, or buyer address to import.", variant: "default" });
+          return;
+        }
+        
+        let addedCount = 0;
+        let updatedCount = 0;
+        let skippedCount = 0;
+        
+        // Create a set of all current inventory IDs for uniqueness checks
+        const currentInventoryItemIds = new Set(inventory.map(item => item.id));
+        const tempImportedItemIdsForThisBatch = new Set<string>(); // Track IDs from items processed in *this current import batch*
+
+        const newInventoryState = [...inventory]; // Start with a copy
+
+        parsedItems.forEach(rawItemFromFile => {
+          // When checking uniqueness for an item, consider both current inventory IDs AND IDs already used in this import batch
+          const combinedExistingIds = new Set([...currentInventoryItemIds, ...tempImportedItemIdsForThisBatch]);
+          
+          const importedItem = mapRawItemToInventoryItemEnsuringUniqueId(
+            rawItemFromFile,
+            combinedExistingIds, // Pass the combined set of all known IDs
+            tempImportedItemIdsForThisBatch // This set will be updated by mapRawItem...
+          );
+
+          if (!importedItem) {
+            skippedCount++;
+            return;
+          }
+
+          const existingItemIndex = newInventoryState.findIndex(
+            invItem => invItem.name.toLowerCase() === importedItem.name.toLowerCase() &&
+                       invItem.category.toLowerCase() === importedItem.category.toLowerCase()
+          );
+
+          if (existingItemIndex !== -1) {
+            const currentItem = newInventoryState[existingItemIndex];
+            newInventoryState[existingItemIndex] = {
+              ...currentItem,
+              stock: currentItem.stock + importedItem.stock,
+              price: importedItem.price, 
+              description: importedItem.description,
+            };
+            updatedCount++;
+          } else {
+            newInventoryState.push(importedItem);
+            // The new ID is already added to tempImportedItemIdsForThisBatch inside mapRawItem...
+            // Add it to currentInventoryItemIds as well for subsequent checks in this loop if needed,
+            // though mapRawItem... already consults tempImportedItemIdsForThisBatch.
+            currentInventoryItemIds.add(importedItem.id); 
+            addedCount++;
+          }
+        });
+
+        setInventory(newInventoryState);
+
+        if (importedInvoiceCounter !== undefined) {
+          setInvoiceCounter(importedInvoiceCounter);
+        }
+        if (importedBuyerAddress) {
+          setBuyerAddress(importedBuyerAddress);
+        }
+        setInvoiceItems([]);
+
+        toast({
+          title: 'Import Complete',
+          description: `Processed ${parsedItems.length} records from file.`,
+        });
+
+        setTimeout(() => {
+          toast({
+            title: 'Import Summary',
+            description: `Items Added: ${addedCount}, Items Updated: ${updatedCount}, Items Skipped: ${skippedCount}. Settings updated if present. Current invoice cleared.`,
+            duration: 7000,
+          });
+        }, 1000);
+
+      } catch (error: any) {
+        console.error('Error processing imported data:', error);
+        toast({
+          title: 'Import Error',
+          description: `Failed to process data. ${error.message || 'Unknown error'}`,
+          variant: 'destructive',
+        });
+      } finally {
+        if (event.target) {
+          (event.target as HTMLInputElement).value = '';
+        }
       }
     };
-    reader.readAsText(file);
-    event.target.value = ''; // Reset file input
-  };
 
+    reader.onerror = () => {
+      toast({
+        title: 'File Read Error',
+        description: 'Could not read the selected file.',
+        variant: 'destructive',
+      });
+      if (event.target) {
+        (event.target as HTMLInputElement).value = '';
+      }
+    };
+
+    reader.readAsText(file);
+  };
+  
   const handleShowShortcuts = () => {
     setIsShortcutsDialogOpen(true);
   };
@@ -157,8 +332,7 @@ export default function HomePage() {
     } else {
         toast({ title: "New Invoice", description: "Invoice is already empty.", variant: "default" });
     }
-    setBuyerAddress(initialBuyerAddress); // Reset buyer address for new invoice
-    // setInvoiceCounter(prev => prev + 1); // This was moved to print
+    setBuyerAddress(initialBuyerAddress);
   }, [invoiceItems, setInventory, setInvoiceItems, setBuyerAddress, toast]);
 
 
@@ -188,14 +362,7 @@ export default function HomePage() {
     };
   }, [handlePrintInvoice, clearCurrentInvoice]);
 
-  // Render a placeholder or null until the client has mounted
-  // This helps ensure the initial client render matches the server render for components
-  // that rely heavily on client-side state like localStorage.
   if (!isClient) {
-    // You can return a loader or null. For this app, returning null might be okay
-    // as the main structure is simple. Or a basic skeleton.
-    // For InventoryTable, the server renders "No items..." if inventory is empty.
-    // The updated useLocalStorage ensures client's initial inventory is also empty.
     return null; 
   }
 
@@ -234,3 +401,4 @@ export default function HomePage() {
     </div>
   );
 }
+
