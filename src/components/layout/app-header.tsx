@@ -12,14 +12,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Store, Package, FileText, Printer, Settings, Download, Upload, Keyboard } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast'; // Import useToast
+import { useToast } from '@/hooks/use-toast';
 
 interface AppHeaderProps {
   activeSection: string;
   setActiveSection: Dispatch<SetStateAction<string>>;
   onPrint: () => void;
   onExportData: () => void;
-  onImportData: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  onImportData: (files: FileList | null) => void; // Changed signature
   onShowShortcuts: () => void;
 }
 
@@ -32,20 +32,26 @@ export default function AppHeader({
   onShowShortcuts,
 }: AppHeaderProps) {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
-  const { toast } = useToast(); // Initialize useToast
+  const { toast } = useToast();
 
   const handleImportClick = () => {
     fileInputRef.current?.click();
   };
 
   const handleFileSelected = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = event.target.files; // Get files first
     toast({
       title: "DEBUG: AppHeader",
-      description: "File selected, onImportData prop is about to be called.",
+      description: "File selected, onImportData prop is about to be called with file list.",
       variant: "default",
       duration: 5000,
     });
-    onImportData(event); // Call the prop passed from HomePage
+    onImportData(selectedFiles); // Pass FileList directly
+    
+    // Reset the input value *after* processing, so the same file can be selected again if needed.
+    if (event.target) { 
+        (event.target as HTMLInputElement).value = ''; 
+    }
   };
 
   return (
@@ -93,7 +99,7 @@ export default function AppHeader({
                 ref={fileInputRef}
                 accept=".json"
                 style={{ display: 'none' }}
-                onChange={handleFileSelected} // Use the new handler here
+                onChange={handleFileSelected}
               />
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={onShowShortcuts}>

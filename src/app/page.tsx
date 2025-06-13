@@ -102,20 +102,20 @@ export default function HomePage() {
     const normalizePrice = (price: any): number => {
       if (typeof price === 'number') return price;
       if (typeof price === 'string') {
-        const numStr = price.replace(/[^0-9.]/g, '');
+        const numStr = price.replace(/[^0-9.]/g, ''); // Allow only digits and decimal point
         const val = parseFloat(numStr);
         return isNaN(val) ? NaN : val; 
       }
-      return NaN;
+      return NaN; // Return NaN if price is not a number or string
     };
   
     const normalizeStock = (stock: any): number => {
-      if (typeof stock === 'number') return Math.floor(stock);
+      if (typeof stock === 'number') return Math.floor(stock); // Ensure integer for stock
       if (typeof stock === 'string') {
         const val = parseInt(stock, 10);
         return isNaN(val) ? NaN : val;
       }
-      return NaN;
+      return NaN; // Return NaN if stock is not a number or string
     };
 
     const name = rawItem.name || rawItem.item_name || rawItem.itemName || rawItem['Item Name'];
@@ -125,15 +125,17 @@ export default function HomePage() {
     const description = rawItem.description || rawItem.Description || '';
   
     if (!name || typeof name !== 'string' || name.trim() === '') return null;
+    // Ensure price and stock are valid numbers and non-negative
     if (isNaN(price) || price < 0) return null;
     if (isNaN(stock) || stock < 0) return null; 
     if (!category || typeof category !== 'string' || category.trim() === '') return null;
 
     let finalId = rawItem.id || generateUniqueId();
+    // Ensure unique ID across all existing items and those already processed in this batch
     while (allExistingItemIds.has(finalId) || tempImportedItemIdsForThisBatch.has(finalId)) {
       finalId = generateUniqueId();
     }
-    tempImportedItemIdsForThisBatch.add(finalId); 
+    tempImportedItemIdsForThisBatch.add(finalId); // Record this ID as used for this batch
   
     return {
       id: finalId,
@@ -146,15 +148,13 @@ export default function HomePage() {
   };
 
 
-  const handleImportData = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImportData = (files: FileList | null) => { // Changed signature to accept FileList | null
     toast({ title: "DEBUG", description: "handleImportData called in page.tsx", variant: "default", duration: 5000 }); 
 
-    const file = event.target.files?.[0];
+    const file = files?.[0]; // Get file from FileList
     if (!file) {
-      toast({ title: "Import Cancelled", description: "No file selected.", variant: "default" });
-      if (event.target) {
-        (event.target as HTMLInputElement).value = ''; 
-      }
+      toast({ title: "Import Cancelled", description: "No file selected or file list empty.", variant: "default" });
+      // No event.target to reset here as it's handled in AppHeader
       return;
     }
 
@@ -165,9 +165,7 @@ export default function HomePage() {
         description: `Please select a file smaller than ${MAX_FILE_SIZE_MB}MB.`,
         variant: 'destructive',
       });
-      if (event.target) {
-        (event.target as HTMLInputElement).value = '';
-      }
+      // No event.target to reset here
       return;
     }
 
@@ -189,17 +187,27 @@ export default function HomePage() {
         let importedInvoiceCounter: number | undefined = undefined;
         let importedBuyerAddress: BuyerAddress | undefined = undefined;
 
+        // Check if parsedData is an object and has an 'items' array (standard format)
+        // or if it's directly an array of items (simple format)
         if (Array.isArray(parsedData)) { 
+          // Handles case where JSON is just an array of items
           parsedItems = parsedData;
         } else if (typeof parsedData === 'object' && parsedData !== null) { 
+          // Handles AppData format
           if (Array.isArray(parsedData.items)) {
             parsedItems = parsedData.items;
           }
           if (typeof parsedData.invoiceCounter === 'number') {
             importedInvoiceCounter = parsedData.invoiceCounter;
           }
+          // Validate buyerAddress structure more carefully
           if (typeof parsedData.buyerAddress === 'object' && parsedData.buyerAddress !== null) {
-            importedBuyerAddress = parsedData.buyerAddress;
+             const ba = parsedData.buyerAddress;
+             if (ba.name && ba.addressLine1 && ba.gstin && ba.stateNameAndCode && ba.contact) { // Basic check
+                importedBuyerAddress = ba;
+             } else {
+                toast({ title: "Warning", description: "Buyer address in file is incomplete, skipping.", variant: "default"});
+             }
           }
         } else {
           throw new Error("Invalid JSON structure. Expected an array of items or an object with an 'items' array.");
@@ -215,41 +223,45 @@ export default function HomePage() {
         let skippedCount = 0;
         
         const currentInventoryItemIds = new Set(inventory.map(item => item.id));
-        const tempImportedItemIdsForThisBatch = new Set<string>(); 
+        const tempImportedItemIdsForThisBatch = new Set<string>(); // To track IDs used *within this import batch* to ensure uniqueness if file has duplicate IDs
 
-        const newInventoryState = [...inventory]; 
+        const newInventoryState = [...inventory]; // Start with a copy of current inventory
 
         parsedItems.forEach(rawItemFromFile => {
+          // For ID uniqueness check, consider IDs already in inventory AND IDs of items already processed *from this file*
           const combinedExistingIds = new Set([...currentInventoryItemIds, ...tempImportedItemIdsForThisBatch]);
           
           const importedItem = mapRawItemToInventoryItemEnsuringUniqueId(
             rawItemFromFile,
-            combinedExistingIds, 
-            tempImportedItemIdsForThisBatch 
+            combinedExistingIds, // Pass the combined set of all known IDs
+            tempImportedItemIdsForThisBatch // Pass the set for items processed in this batch
           );
 
           if (!importedItem) {
             skippedCount++;
-            return;
+            return; // Skip this item if it's invalid
           }
 
+          // Check if item (by name and category, case-insensitive) already exists
           const existingItemIndex = newInventoryState.findIndex(
             invItem => invItem.name.toLowerCase() === importedItem.name.toLowerCase() &&
                        invItem.category.toLowerCase() === importedItem.category.toLowerCase()
           );
 
           if (existingItemIndex !== -1) {
+            // Item exists, update it
             const currentItem = newInventoryState[existingItemIndex];
             newInventoryState[existingItemIndex] = {
-              ...currentItem,
-              stock: currentItem.stock + importedItem.stock, 
-              price: importedItem.price, 
-              description: importedItem.description,
+              ...currentItem, // Keep existing ID and other unmentioned fields
+              stock: currentItem.stock + importedItem.stock, // Add to existing stock
+              price: importedItem.price, // Update price from imported file
+              description: importedItem.description, // Update description
             };
             updatedCount++;
           } else {
+            // Item is new, add it
             newInventoryState.push(importedItem);
-            currentInventoryItemIds.add(importedItem.id); 
+            currentInventoryItemIds.add(importedItem.id); // Add new ID to the main set for future checks within this loop
             addedCount++;
           }
         });
@@ -280,13 +292,14 @@ export default function HomePage() {
           description: `Processed ${parsedItems.length} item records from file. Settings updated if present.`,
         });
 
+        // Delayed toast for summary to ensure it's noticeable
         setTimeout(() => {
           toast({
             title: 'Import Summary',
             description: `Items Added: ${addedCount}, Items Updated: ${updatedCount}, Items Skipped: ${skippedCount}. Current invoice cleared.`,
-            duration: 7000,
+            duration: 7000, // Longer duration for summary
           });
-        }, 1000);
+        }, 1000); // 1 second delay
 
       } catch (error: any) {
         console.error('Error processing imported data:', error);
@@ -296,9 +309,7 @@ export default function HomePage() {
           variant: 'destructive',
         });
       } finally {
-        if (event.target) {
-          (event.target as HTMLInputElement).value = '';
-        }
+        // File input reset is now handled in AppHeader.tsx
       }
     };
 
@@ -308,9 +319,7 @@ export default function HomePage() {
         description: 'Could not read the selected file.',
         variant: 'destructive',
       });
-      if (event.target) {
-        (event.target as HTMLInputElement).value = '';
-      }
+      // File input reset is now handled in AppHeader.tsx
     };
 
     reader.readAsText(file);
@@ -381,7 +390,7 @@ export default function HomePage() {
         setActiveSection={setActiveSection}
         onPrint={handlePrintInvoice}
         onExportData={handleExportData}
-        onImportData={handleImportData}
+        onImportData={handleImportData} // Prop now expects FileList | null
         onShowShortcuts={handleShowShortcuts}
       />
       <main className="flex-grow container mx-auto p-4 md:p-6">
