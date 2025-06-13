@@ -58,9 +58,9 @@ export default function CreateInvoiceForm({ inventory, onAddItemToInvoice, buyer
     });
 
     if (item.stock - qty < 5 && item.stock - qty > 0) {
-        toast({ title: "Warning", description: `Low stock for ${item.name}. Only ${item.stock - qty} left!`, variant: "default" });
+        toast({ title: "Low Stock Warning", description: `Low stock for ${item.name}. Only ${item.stock - qty} left!`, variant: "warning" });
     } else if (item.stock - qty === 0) {
-        toast({ title: "Warning", description: `${item.name} is now out of stock.`, variant: "default" });
+        toast({ title: "Out of Stock", description: `${item.name} is now out of stock.`, variant: "warning" });
     }
 
     setSelectedItemId('');
