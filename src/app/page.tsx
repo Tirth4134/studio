@@ -96,15 +96,15 @@ export default function HomePage() {
 
   const mapRawItemToInventoryItemEnsuringUniqueId = (
     rawItem: any,
-    allExistingItemIds: Set<string>, // Combined set of current inventory IDs and IDs from this import batch
-    tempImportedItemIdsForThisBatch: Set<string> // IDs from items processed *in this current import batch*
+    allExistingItemIds: Set<string>, 
+    tempImportedItemIdsForThisBatch: Set<string> 
   ): InventoryItem | null => {
     const normalizePrice = (price: any): number => {
       if (typeof price === 'number') return price;
       if (typeof price === 'string') {
         const numStr = price.replace(/[^0-9.]/g, '');
         const val = parseFloat(numStr);
-        return isNaN(val) ? NaN : val;
+        return isNaN(val) ? NaN : val; 
       }
       return NaN;
     };
@@ -126,15 +126,13 @@ export default function HomePage() {
   
     if (!name || typeof name !== 'string' || name.trim() === '') return null;
     if (isNaN(price) || price < 0) return null;
-    if (isNaN(stock) || stock < 0) return null;
+    if (isNaN(stock) || stock < 0) return null; 
     if (!category || typeof category !== 'string' || category.trim() === '') return null;
 
     let finalId = rawItem.id || generateUniqueId();
-    // Ensure ID is unique against ALL known IDs (current inventory + previously processed in this batch)
     while (allExistingItemIds.has(finalId) || tempImportedItemIdsForThisBatch.has(finalId)) {
       finalId = generateUniqueId();
     }
-    // Add to this batch's ID set *after* ensuring it's unique against prior items in batch
     tempImportedItemIdsForThisBatch.add(finalId); 
   
     return {
@@ -149,13 +147,13 @@ export default function HomePage() {
 
 
   const handleImportData = (event: React.ChangeEvent<HTMLInputElement>) => {
-    toast({ title: "DEBUG", description: "handleImportData called in page.tsx" }); // <-- DIAGNOSTIC TOAST
+    toast({ title: "DEBUG", description: "handleImportData called in page.tsx", variant: "default", duration: 5000 }); 
 
     const file = event.target.files?.[0];
     if (!file) {
       toast({ title: "Import Cancelled", description: "No file selected.", variant: "default" });
       if (event.target) {
-        (event.target as HTMLInputElement).value = ''; // Reset if no file selected.
+        (event.target as HTMLInputElement).value = ''; 
       }
       return;
     }
@@ -176,20 +174,24 @@ export default function HomePage() {
     const reader = new FileReader();
 
     reader.onload = (e) => {
+      toast({ title: "DEBUG", description: "FileReader onload triggered.", variant: "default", duration: 5000 });
       try {
         const result = e.target?.result as string;
         if (!result) {
           throw new Error("File content is empty or unreadable.");
         }
+        toast({ title: "DEBUG", description: "File content read.", variant: "default", duration: 5000 });
         
         const parsedData = JSON.parse(result);
+        toast({ title: "DEBUG", description: "JSON parsed.", variant: "default", duration: 5000 });
+
         let parsedItems: any[] = [];
         let importedInvoiceCounter: number | undefined = undefined;
         let importedBuyerAddress: BuyerAddress | undefined = undefined;
 
-        if (Array.isArray(parsedData)) { // Case 1: File is just an array of items
+        if (Array.isArray(parsedData)) { 
           parsedItems = parsedData;
-        } else if (typeof parsedData === 'object' && parsedData !== null) { // Case 2: File is an AppData object
+        } else if (typeof parsedData === 'object' && parsedData !== null) { 
           if (Array.isArray(parsedData.items)) {
             parsedItems = parsedData.items;
           }
@@ -204,7 +206,7 @@ export default function HomePage() {
         }
 
         if (parsedItems.length === 0 && importedInvoiceCounter === undefined && importedBuyerAddress === undefined) {
-          toast({ title: "No Data Found", description: "The file does not contain items, invoice counter, or buyer address to import.", variant: "default" });
+          toast({ title: "No Valid Data Found", description: "The file does not contain items, invoice counter, or buyer address to import.", variant: "default" });
           return;
         }
         
@@ -212,20 +214,18 @@ export default function HomePage() {
         let updatedCount = 0;
         let skippedCount = 0;
         
-        // Create a set of all current inventory IDs for uniqueness checks
         const currentInventoryItemIds = new Set(inventory.map(item => item.id));
-        const tempImportedItemIdsForThisBatch = new Set<string>(); // Track IDs from items processed in *this current import batch*
+        const tempImportedItemIdsForThisBatch = new Set<string>(); 
 
-        const newInventoryState = [...inventory]; // Start with a copy
+        const newInventoryState = [...inventory]; 
 
         parsedItems.forEach(rawItemFromFile => {
-          // When checking uniqueness for an item, consider both current inventory IDs AND IDs already used in this import batch
           const combinedExistingIds = new Set([...currentInventoryItemIds, ...tempImportedItemIdsForThisBatch]);
           
           const importedItem = mapRawItemToInventoryItemEnsuringUniqueId(
             rawItemFromFile,
-            combinedExistingIds, // Pass the combined set of all known IDs
-            tempImportedItemIdsForThisBatch // This set will be updated by mapRawItem...
+            combinedExistingIds, 
+            tempImportedItemIdsForThisBatch 
           );
 
           if (!importedItem) {
@@ -242,40 +242,48 @@ export default function HomePage() {
             const currentItem = newInventoryState[existingItemIndex];
             newInventoryState[existingItemIndex] = {
               ...currentItem,
-              stock: currentItem.stock + importedItem.stock,
+              stock: currentItem.stock + importedItem.stock, 
               price: importedItem.price, 
               description: importedItem.description,
             };
             updatedCount++;
           } else {
             newInventoryState.push(importedItem);
-            // The new ID is already added to tempImportedItemIdsForThisBatch inside mapRawItem...
-            // Add it to currentInventoryItemIds as well for subsequent checks in this loop if needed,
-            // though mapRawItem... already consults tempImportedItemIdsForThisBatch.
             currentInventoryItemIds.add(importedItem.id); 
             addedCount++;
           }
         });
-
+        
+        toast({ title: "DEBUG", description: "Preparing to set inventory.", variant: "default", duration: 5000 });
         setInventory(newInventoryState);
+        toast({ title: "DEBUG", description: "Inventory set.", variant: "default", duration: 5000 });
+
 
         if (importedInvoiceCounter !== undefined) {
+          toast({ title: "DEBUG", description: "Preparing to set invoice counter.", variant: "default", duration: 5000 });
           setInvoiceCounter(importedInvoiceCounter);
+          toast({ title: "DEBUG", description: "Invoice counter set.", variant: "default", duration: 5000 });
         }
         if (importedBuyerAddress) {
+          toast({ title: "DEBUG", description: "Preparing to set buyer address.", variant: "default", duration: 5000 });
           setBuyerAddress(importedBuyerAddress);
+          toast({ title: "DEBUG", description: "Buyer address set.", variant: "default", duration: 5000 });
         }
-        setInvoiceItems([]);
+        
+        toast({ title: "DEBUG", description: "Preparing to clear current invoice items.", variant: "default", duration: 5000 });
+        setInvoiceItems([]); // Clear current invoice items
+        toast({ title: "DEBUG", description: "Current invoice items cleared.", variant: "default", duration: 5000 });
+
 
         toast({
           title: 'Import Complete',
-          description: `Processed ${parsedItems.length} records from file.`,
+          description: `Processed ${parsedItems.length} item records from file. Settings updated if present.`,
         });
 
         setTimeout(() => {
           toast({
             title: 'Import Summary',
-            description: `Items Added: ${addedCount}, Items Updated: ${updatedCount}, Items Skipped: ${skippedCount}. Settings updated if present. Current invoice cleared.`,
+            description: `Items Added: ${addedCount}, Items Updated: ${updatedCount}, Items Skipped: ${skippedCount}. Current invoice cleared.`,
             duration: 7000,
           });
         }, 1000);
@@ -332,7 +340,7 @@ export default function HomePage() {
     } else {
         toast({ title: "New Invoice", description: "Invoice is already empty.", variant: "default" });
     }
-    setBuyerAddress(initialBuyerAddress);
+    setBuyerAddress(initialBuyerAddress); // Reset buyer address to initial on new invoice
   }, [invoiceItems, setInventory, setInvoiceItems, setBuyerAddress, toast]);
 
 
@@ -401,4 +409,3 @@ export default function HomePage() {
     </div>
   );
 }
-
