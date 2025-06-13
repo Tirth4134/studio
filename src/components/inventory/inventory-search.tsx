@@ -17,7 +17,7 @@ export default function InventorySearch({ searchTerm, onSearchTermChange }: Inve
         placeholder="Search inventory by name or category..."
         value={searchTerm}
         onChange={(e) => onSearchTermChange(e.target.value)}
-        className="pl-10 w-full md:w-1/3"
+        className="pl-10 w-full md:w-[95%]"
       />
     </div>
   );
