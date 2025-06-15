@@ -38,7 +38,7 @@ const initialBuyerAddressGlobal: BuyerAddress = {
 
 export default function HomePage() {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
-  const [invoiceItems, setInvoiceItems] = useState<InvoiceLineItem[]>([]); // Stays local, or could be persisted if needed
+  const [invoiceItems, setInvoiceItems] = useState<InvoiceLineItem[]>([]);
   const [invoiceCounter, setInvoiceCounter] = useState<number>(1);
   const [buyerAddress, setBuyerAddress] = useState<BuyerAddress>(initialBuyerAddressGlobal);
   
@@ -61,28 +61,42 @@ export default function HomePage() {
     if (isClient) {
       const fetchData = async () => {
         setIsLoading(true);
-        const firestoreInventory = await getInventoryFromFirestore();
-        const appSettings = await getAppSettingsFromFirestore(initialBuyerAddressGlobal);
+        try {
+          const firestoreInventory = await getInventoryFromFirestore();
+          const appSettings = await getAppSettingsFromFirestore(initialBuyerAddressGlobal);
 
-        if (firestoreInventory.length === 0 && appSettings.invoiceCounter === 1) {
-          // Firestore is likely empty or new, seed initial data
-          await saveMultipleInventoryItemsToFirestore(initialInventoryForSeed);
-          setInventory(initialInventoryForSeed);
-          // App settings will be the defaults (invoiceCounter: 1, initialBuyerAddress)
-          setInvoiceCounter(appSettings.invoiceCounter); // Which is 1
-          setBuyerAddress(appSettings.buyerAddress);   // Which is initialBuyerAddressGlobal
-          await saveInvoiceCounterToFirestore(1); // Explicitly save initial counter
-          await saveBuyerAddressToFirestore(initialBuyerAddressGlobal); // Explicitly save initial address
-        } else {
-          setInventory(firestoreInventory);
-          setInvoiceCounter(appSettings.invoiceCounter);
-          setBuyerAddress(appSettings.buyerAddress);
+          if (firestoreInventory.length === 0 && appSettings.invoiceCounter === 1 && appSettings.buyerAddress.name === initialBuyerAddressGlobal.name) {
+            // Firestore is likely empty or new, seed initial data
+            await saveMultipleInventoryItemsToFirestore(initialInventoryForSeed);
+            setInventory(initialInventoryForSeed);
+            // App settings will be the defaults (invoiceCounter: 1, initialBuyerAddress)
+            // getAppSettingsFromFirestore already saves these defaults if not present.
+            setInvoiceCounter(appSettings.invoiceCounter); 
+            setBuyerAddress(appSettings.buyerAddress);   
+          } else {
+            setInventory(firestoreInventory);
+            setInvoiceCounter(appSettings.invoiceCounter);
+            setBuyerAddress(appSettings.buyerAddress);
+          }
+        } catch (error) {
+            console.error("Error during initial data fetch and processing:", error);
+            // Set to default/empty states if fetching fails, so UI doesn't hang on error.
+            setInventory([]);
+            setInvoiceCounter(1);
+            setBuyerAddress(initialBuyerAddressGlobal);
+            toast({
+                title: "Loading Error",
+                description: "Could not load data from the server. Please check your connection or Firebase setup.",
+                variant: "destructive",
+                duration: 7000
+            });
+        } finally {
+            setIsLoading(false); 
         }
-        setIsLoading(false);
       };
       fetchData();
     }
-  }, [isClient]);
+  }, [isClient, toast]); // Added toast to dependencies as it's used in catch
 
   useEffect(() => {
     setCurrentInvoiceNumber(generateInvoiceNumber(invoiceCounter));
@@ -102,13 +116,18 @@ export default function HomePage() {
     if (typeof newInventory === 'function') {
       setInventory(prevState => {
         const updatedState = newInventory(prevState);
-        // For simplicity, we save the entire inventory. For performance, diffing could be implemented.
-        saveMultipleInventoryItemsToFirestore(updatedState).catch(err => console.error("Failed to save updated inventory state", err));
+        saveMultipleInventoryItemsToFirestore(updatedState).catch(err => {
+          console.error("Failed to save updated inventory state", err);
+          toast({ title: "Save Error", description: "Could not save inventory changes to the server.", variant: "destructive"});
+        });
         return updatedState;
       });
     } else {
       setInventory(newInventory);
-      await saveMultipleInventoryItemsToFirestore(newInventory);
+      await saveMultipleInventoryItemsToFirestore(newInventory).catch(err => {
+          console.error("Failed to save inventory to the server", err);
+          toast({ title: "Save Error", description: "Could not save inventory to the server.", variant: "destructive"});
+      });
     }
   };
 
@@ -125,26 +144,32 @@ export default function HomePage() {
 
   const handleExportData = async () => {
     setIsLoading(true);
-    const currentInventory = await getInventoryFromFirestore();
-    const currentSettings = await getAppSettingsFromFirestore(initialBuyerAddressGlobal);
-    setIsLoading(false);
-
-    const appData: AppData = {
-      items: currentInventory,
-      invoiceCounter: currentSettings.invoiceCounter,
-      buyerAddress: currentSettings.buyerAddress,
-    };
-    const dataStr = JSON.stringify(appData, null, 2);
-    const dataBlob = new Blob([dataStr], { type: 'application/json' });
-    const url = URL.createObjectURL(dataBlob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `invoiceflow_data_${new Date().toISOString().split('T')[0]}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    toast({ title: "Success", description: "Data exported successfully." });
+    try {
+      const currentInventory = await getInventoryFromFirestore();
+      const currentSettings = await getAppSettingsFromFirestore(initialBuyerAddressGlobal);
+      
+      const appData: AppData = {
+        items: currentInventory,
+        invoiceCounter: currentSettings.invoiceCounter,
+        buyerAddress: currentSettings.buyerAddress,
+      };
+      const dataStr = JSON.stringify(appData, null, 2);
+      const dataBlob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(dataBlob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `invoiceflow_data_${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      toast({ title: "Success", description: "Data exported successfully." });
+    } catch (error) {
+      console.error("Error exporting data:", error);
+      toast({ title: "Export Error", description: "Failed to export data.", variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+    }
   };
   
   const mapRawItemToInventoryItemEnsuringUniqueId = (
@@ -199,7 +224,6 @@ export default function HomePage() {
   };
 
   const handleImportData = (files: FileList | null) => {
-    toast({ title: "DEBUG", description: "handleImportData called in page.tsx", variant: "default", duration: 2000 });
     const file = files?.[0];
     if (!file) {
       toast({ title: "Import Cancelled", description: "No file selected.", variant: "default" });
@@ -214,14 +238,12 @@ export default function HomePage() {
 
     const reader = new FileReader();
     reader.onload = async (e) => {
-      toast({ title: "DEBUG", description: "FileReader onload triggered.", variant: "default", duration: 2000 });
+      setIsLoading(true);
       try {
         const result = e.target?.result as string;
         if (!result) throw new Error("File content is empty or unreadable.");
-        toast({ title: "DEBUG", description: "File content read.", variant: "default", duration: 2000 });
         
         const parsedData = JSON.parse(result);
-        toast({ title: "DEBUG", description: "JSON parsed.", variant: "default", duration: 2000 });
 
         let parsedItems: any[] = [];
         let importedInvoiceCounter: number | undefined = undefined;
@@ -246,10 +268,10 @@ export default function HomePage() {
 
         if (parsedItems.length === 0 && importedInvoiceCounter === undefined && importedBuyerAddress === undefined) {
           toast({ title: "No Valid Data Found", description: "File does not contain items, invoice counter, or buyer address.", variant: "default" });
+          setIsLoading(false);
           return;
         }
         
-        setIsLoading(true);
         const currentFirestoreInventory = await getInventoryFromFirestore();
         const newInventoryState = [...currentFirestoreInventory];
         const currentInventoryItemIds = new Set(newInventoryState.map(item => item.id));
@@ -277,7 +299,7 @@ export default function HomePage() {
             const currentItem = newInventoryState[existingItemIndex];
             newInventoryState[existingItemIndex] = {
               ...currentItem,
-              id: currentItem.id, // Keep existing ID
+              id: currentItem.id, 
               stock: currentItem.stock + importedItem.stock,
               price: importedItem.price,
               description: importedItem.description,
@@ -285,40 +307,36 @@ export default function HomePage() {
             updatedCount++;
           } else {
             newInventoryState.push(importedItem);
-            currentInventoryItemIds.add(importedItem.id);
+            currentInventoryItemIds.add(importedItem.id); 
+            tempImportedItemIdsForThisBatch.add(importedItem.id);
             addedCount++;
           }
         });
         
-        toast({ title: "DEBUG", description: "Preparing to save to Firestore.", variant: "default", duration: 2000 });
         await saveMultipleInventoryItemsToFirestore(newInventoryState);
-        setInventory(newInventoryState); // Update local state after Firestore save
-        toast({ title: "DEBUG", description: "Inventory saved to Firestore and state updated.", variant: "default", duration: 2000 });
+        setInventory(newInventoryState); 
 
         if (importedInvoiceCounter !== undefined) {
           await saveInvoiceCounterToFirestore(importedInvoiceCounter);
           setInvoiceCounter(importedInvoiceCounter);
-          toast({ title: "DEBUG", description: "Invoice counter saved.", variant: "default", duration: 2000 });
         }
         if (importedBuyerAddress) {
           await saveBuyerAddressToFirestore(importedBuyerAddress);
           setBuyerAddress(importedBuyerAddress);
-          toast({ title: "DEBUG", description: "Buyer address saved.", variant: "default", duration: 2000 });
         }
         
-        setInvoiceItems([]); // Clear current invoice items (local state)
-        toast({ title: "DEBUG", description: "Current invoice items cleared locally.", variant: "default", duration: 2000 });
+        setInvoiceItems([]); 
 
-        setIsLoading(false);
         toast({ title: 'Import Complete', description: `Processed ${parsedItems.length} records. Settings updated.`, });
         setTimeout(() => {
           toast({ title: 'Import Summary', description: `Items Added: ${addedCount}, Updated: ${updatedCount}, Skipped: ${skippedCount}.`, duration: 7000 });
         }, 1000);
 
       } catch (error: any) {
-        setIsLoading(false);
         console.error('Error processing imported data:', error);
         toast({ title: 'Import Error', description: `Failed to process data. ${error.message || 'Unknown error'}`, variant: 'destructive' });
+      } finally {
+        setIsLoading(false);
       }
     };
     reader.onerror = () => {
@@ -332,28 +350,31 @@ export default function HomePage() {
 
   const clearCurrentInvoice = useCallback(async () => {
     if (invoiceItems.length > 0) {
-        const inventoryUpdates = invoiceItems.map(invoiceItem => {
-            const invItem = inventory.find(i => i.id === invoiceItem.id);
-            if (invItem) {
-                return { ...invItem, stock: invItem.stock + invoiceItem.quantity };
-            }
-            return null;
-        }).filter(Boolean) as InventoryItem[];
+        const inventoryUpdatesMap = new Map<string, number>(); // Store ID and quantity to add back
 
-        if (inventoryUpdates.length > 0) {
-            await saveMultipleInventoryItemsToFirestore(inventoryUpdates); // Save updates to Firestore
-            // Refresh local inventory from Firestore or merge carefully
-            const updatedFirestoreInventory = await getInventoryFromFirestore();
-            setInventory(updatedFirestoreInventory);
-        }
+        invoiceItems.forEach(invoiceItem => {
+            inventoryUpdatesMap.set(invoiceItem.id, (inventoryUpdatesMap.get(invoiceItem.id) || 0) + invoiceItem.quantity);
+        });
+
+        const currentInventory = await getInventoryFromFirestore();
+        const updatedInventoryForFirestore = currentInventory.map(invItem => {
+            if (inventoryUpdatesMap.has(invItem.id)) {
+                return { ...invItem, stock: invItem.stock + (inventoryUpdatesMap.get(invItem.id) || 0) };
+            }
+            return invItem;
+        });
+        
+        await saveMultipleInventoryItemsToFirestore(updatedInventoryForFirestore);
+        setInventory(updatedInventoryForFirestore); // Update local state
         
         setInvoiceItems([]); // Clear local invoice items
-        toast({ title: "New Invoice", description: "Current invoice cleared." });
+        toast({ title: "New Invoice", description: "Current invoice cleared and stock restored." });
     } else {
         toast({ title: "New Invoice", description: "Invoice is already empty.", variant: "default" });
     }
-    await updateBuyerAddress(initialBuyerAddressGlobal); // Reset buyer address in Firestore and state
-  }, [invoiceItems, inventory, toast]);
+    // Optionally reset buyer address if it's not meant to persist across new invoices
+    // await updateBuyerAddress(initialBuyerAddressGlobal); 
+  }, [invoiceItems, toast, setInventory]); // Added setInventory to dependencies
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -392,20 +413,20 @@ export default function HomePage() {
         {activeSection === 'inventory' && (
           <InventorySection 
             inventory={inventory} 
-            setInventory={updateInventory} // Pass the Firestore-aware update function
+            setInventory={updateInventory} 
           />
         )}
         {activeSection === 'invoice' && (
           <InvoiceSection
             inventory={inventory}
-            setInventory={updateInventory} // Pass the Firestore-aware update function
+            setInventory={updateInventory} 
             invoiceItems={invoiceItems}
-            setInvoiceItems={setInvoiceItems} // This can remain local for the current invoice
+            setInvoiceItems={setInvoiceItems} 
             invoiceNumber={currentInvoiceNumber}
             invoiceDate={invoiceDate}
             onPrintInvoice={handlePrintInvoice}
             buyerAddress={buyerAddress}
-            setBuyerAddress={updateBuyerAddress} // Pass the Firestore-aware update function
+            setBuyerAddress={updateBuyerAddress} 
           />
         )}
       </main>
