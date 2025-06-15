@@ -11,10 +11,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Archive, Edit, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { saveInventoryItemToFirestore, deleteInventoryItemFromFirestore, getInventoryFromFirestore } from '@/lib/firebase';
+import { generateUniqueId } from '@/lib/invoice-utils';
+
 
 interface InventorySectionProps {
   inventory: InventoryItem[];
-  setInventory: React.Dispatch<React.SetStateAction<InventoryItem[]>>;
+  setInventory: (inventory: InventoryItem[] | ((prevState: InventoryItem[]) => InventoryItem[])) => Promise<void> | void;
 }
 
 export default function InventorySection({ inventory, setInventory }: InventorySectionProps) {
@@ -25,8 +28,15 @@ export default function InventorySection({ inventory, setInventory }: InventoryS
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const { toast } = useToast();
 
-  const handleAddItem = (item: InventoryItem) => {
-    setInventory((prevInventory) => [...prevInventory, item]);
+  const handleAddItem = async (item: Omit<InventoryItem, 'id'>) => {
+    const newItemWithId = { ...item, id: generateUniqueId() };
+    await saveInventoryItemToFirestore(newItemWithId);
+    // Instead of directly modifying local state, fetch the updated list or optimistically update
+    // For simplicity and consistency, we'll update the local state optimistically then ensure it matches Firestore.
+    // The parent `page.tsx`'s `updateInventory` will handle saving the whole list if we pass a function.
+    // However, individual add/edit/delete here should directly interact with Firestore for that item.
+    setInventory(prevInventory => [...prevInventory, newItemWithId]); 
+    toast({ title: "Success", description: `${item.name} added to inventory.` });
   };
 
   const handleEditItem = (item: InventoryItem) => {
@@ -34,12 +44,14 @@ export default function InventorySection({ inventory, setInventory }: InventoryS
     setIsEditDialogOpen(true);
   };
 
-  const handleUpdateItem = (updatedItem: InventoryItem) => {
-    setInventory((prevInventory) =>
+  const handleUpdateItem = async (updatedItem: InventoryItem) => {
+    await saveInventoryItemToFirestore(updatedItem);
+    setInventory(prevInventory =>
       prevInventory.map((item) => (item.id === updatedItem.id ? updatedItem : item))
     );
     setIsEditDialogOpen(false);
     setEditingItem(null);
+    toast({ title: "Success", description: `${updatedItem.name} updated successfully.` });
   };
 
   const handleDeleteItem = (itemId: string) => {
@@ -47,9 +59,10 @@ export default function InventorySection({ inventory, setInventory }: InventoryS
     setIsDeleteDialogOpen(true);
   };
 
-  const confirmDeleteItem = () => {
+  const confirmDeleteItem = async () => {
     if (itemToDeleteId) {
-      setInventory((prevInventory) => prevInventory.filter((item) => item.id !== itemToDeleteId));
+      await deleteInventoryItemFromFirestore(itemToDeleteId);
+      setInventory(prevInventory => prevInventory.filter((item) => item.id !== itemToDeleteId));
       toast({ title: "Success", description: "Item deleted successfully." });
     }
     setIsDeleteDialogOpen(false);
