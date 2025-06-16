@@ -1,6 +1,7 @@
 
 "use client";
 
+import * as React from 'react'; // Keep this for React.useState if explicitly used, or remove if all changed to direct imports
 import { useEffect, useState, useMemo } from 'react';
 import type { SalesRecord } from '@/types';
 import { getSalesRecordsFromFirestore } from '@/lib/firebase';
@@ -23,7 +24,7 @@ export default function ReportsSection() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [timeRangeOption, setTimeRangeOption] = useState<string>('last7days'); 
-  const [customDateRange, setCustomDateRange] = React.useState<DateRange | undefined>(undefined);
+  const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>(undefined);
 
   useEffect(() => {
     const fetchSalesData = async () => {
