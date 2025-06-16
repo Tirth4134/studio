@@ -1,8 +1,7 @@
 
 "use client";
 
-import * as React from 'react'; // Keep this for React.useState if explicitly used, or remove if all changed to direct imports
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react'; // Ensured useState is imported
 import type { SalesRecord } from '@/types';
 import { getSalesRecordsFromFirestore } from '@/lib/firebase';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -24,7 +23,7 @@ export default function ReportsSection() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [timeRangeOption, setTimeRangeOption] = useState<string>('last7days'); 
-  const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>(undefined);
+  const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>(undefined); // Changed React.useState to useState
 
   useEffect(() => {
     const fetchSalesData = async () => {
@@ -122,10 +121,12 @@ export default function ReportsSection() {
       if (!aggregatedMap[dateKey]) {
         aggregatedMap[dateKey] = { profit: 0, loss: 0 };
       }
+      // Assuming record.totalProfit is positive for profit and negative for actual loss value
       if (record.totalProfit > 0) {
         aggregatedMap[dateKey].profit += record.totalProfit;
       } else if (record.totalProfit < 0) {
-        aggregatedMap[dateKey].loss += Math.abs(record.totalProfit);
+        // Store loss as a positive number for charting if needed, or handle negative in chart
+        aggregatedMap[dateKey].loss += Math.abs(record.totalProfit); 
       }
     });
 
@@ -147,7 +148,7 @@ export default function ReportsSection() {
 
   const summaryStats = useMemo(() => {
     const totalProfit = processedChartData.reduce((sum, item) => sum + item.profit, 0);
-    const totalLoss = processedChartData.reduce((sum, item) => sum + item.loss, 0);
+    const totalLoss = processedChartData.reduce((sum, item) => sum + item.loss, 0); // Loss is stored as positive
     const netProfit = totalProfit - totalLoss;
     return { totalProfit, totalLoss, netProfit };
   }, [processedChartData]);
@@ -237,7 +238,7 @@ export default function ReportsSection() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
             <Card className="bg-background/70">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Total Revenue (from Profit)</CardTitle>
+                    <CardTitle className="text-sm font-medium">Total Profit</CardTitle>
                     <TrendingUp className="h-4 w-4 text-green-500" />
                 </CardHeader>
                 <CardContent>
@@ -283,3 +284,4 @@ export default function ReportsSection() {
   );
 }
 
+    
