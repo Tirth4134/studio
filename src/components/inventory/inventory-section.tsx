@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Archive, Edit, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { saveInventoryItemToFirestore, deleteInventoryItemFromFirestore, getInventoryFromFirestore } from '@/lib/firebase';
+import { saveInventoryItemToFirestore, deleteInventoryItemFromFirestore } from '@/lib/firebase'; // saveInventoryItemToFirestore is still needed for updates
 import { generateUniqueId } from '@/lib/invoice-utils';
 
 
@@ -30,11 +30,8 @@ export default function InventorySection({ inventory, setInventory }: InventoryS
 
   const handleAddItem = async (item: Omit<InventoryItem, 'id'>) => {
     const newItemWithId = { ...item, id: generateUniqueId() };
-    await saveInventoryItemToFirestore(newItemWithId);
-    // Instead of directly modifying local state, fetch the updated list or optimistically update
-    // For simplicity and consistency, we'll update the local state optimistically then ensure it matches Firestore.
-    // The parent `page.tsx`'s `updateInventory` will handle saving the whole list if we pass a function.
-    // However, individual add/edit/delete here should directly interact with Firestore for that item.
+    // The setInventory prop (updateInventory in page.tsx) will handle saving to Firestore.
+    // No need to call saveInventoryItemToFirestore here for adding new items.
     setInventory(prevInventory => [...prevInventory, newItemWithId]); 
     toast({ title: "Success", description: `${item.name} added to inventory.` });
   };
@@ -45,6 +42,8 @@ export default function InventorySection({ inventory, setInventory }: InventoryS
   };
 
   const handleUpdateItem = async (updatedItem: InventoryItem) => {
+    // For updating, we directly save the single item to Firestore for efficiency.
+    // And then update the local state.
     await saveInventoryItemToFirestore(updatedItem);
     setInventory(prevInventory =>
       prevInventory.map((item) => (item.id === updatedItem.id ? updatedItem : item))
@@ -127,3 +126,4 @@ export default function InventorySection({ inventory, setInventory }: InventoryS
     </div>
   );
 }
+
