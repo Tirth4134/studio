@@ -1,8 +1,9 @@
 
 import type { Metadata } from 'next';
 import './globals.css';
-import 'react-day-picker/dist/style.css'; // Import react-day-picker styles
+import 'react-day-picker/dist/style.css'; 
 import { Toaster } from "@/components/ui/toaster";
+import AuthGuard from '@/components/auth/auth-guard'; // Import AuthGuard
 
 export const metadata: Metadata = {
   title: 'InvoiceFlow',
@@ -23,9 +24,13 @@ export default function RootLayout({
         <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet" />
       </head>
       <body className="font-body antialiased">
-        {children}
+        <AuthGuard> {/* Wrap children with AuthGuard */}
+          {children}
+        </AuthGuard>
         <Toaster />
       </body>
     </html>
   );
 }
+
+    

@@ -1,17 +1,21 @@
 
 import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
 import { getFirestore, collection, doc, getDoc, setDoc, getDocs, writeBatch, deleteDoc } from "firebase/firestore";
-import { getAuth } from "firebase/auth";
+import { 
+  getAuth, 
+  signInWithEmailAndPassword, 
+  signOut, 
+  onAuthStateChanged,
+  type User
+} from "firebase/auth";
 import type { InventoryItem, BuyerAddress, BuyerProfile, AppSettings as AppSettingsType, SalesRecord } from '@/types';
-import { generateUniqueId } from "./invoice-utils";
 
-
-// Firebase configuration - Updated with user-provided values
+// Firebase configuration
 const firebaseConfig = {
   apiKey: "AIzaSyBFkOKPJM9N0aoP5pVYkIV30DFjTHTEiGo",
   authDomain: "invoiceflow-kyl1w.firebaseapp.com",
   projectId: "invoiceflow-kyl1w",
-  storageBucket: "invoiceflow-kyl1w.appspot.com",
+  storageBucket: "invoiceflow-kyl1w.appspot.com", // Corrected to .appspot.com
   messagingSenderId: "1040042171668",
   appId: "1:1040042171668:web:5326322aceada82f167601"
 };
@@ -29,11 +33,29 @@ if (!getApps().length) {
 const db = getFirestore(app);
 const auth = getAuth(app);
 
-// Firestore collection references
-const inventoryCollectionRef = collection(db, "inventory");
-const settingsDocRef = doc(db, "settings", "appState");
-const buyerProfilesCollectionRef = collection(db, "buyerProfiles");
-const salesRecordsCollectionRef = collection(db, "salesRecords");
+// --- Auth Functions ---
+export const loginUser = async (email: string, password: string):Promise<User> => {
+  try {
+    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    return userCredential.user;
+  } catch (error) {
+    console.error("Error logging in:", error);
+    throw error;
+  }
+};
+
+export const logoutUser = async (): Promise<void> => {
+  try {
+    await signOut(auth);
+  } catch (error) {
+    console.error("Error logging out:", error);
+    throw error;
+  }
+};
+
+export const monitorAuthState = (callback: (user: User | null) => void) => {
+  return onAuthStateChanged(auth, callback);
+};
 
 
 // --- Inventory Functions ---
@@ -74,11 +96,9 @@ export const saveInventoryItemToFirestore = async (item: InventoryItem): Promise
       buyingPrice: item.buyingPrice,
       price: item.price,
       stock: item.stock,
-      description: item.description || ''
+      description: item.description || '',
+      purchaseDate: item.purchaseDate || new Date().toLocaleDateString('en-CA')
     };
-    if (item.purchaseDate) {
-      dataToSave.purchaseDate = item.purchaseDate;
-    }
 
     await setDoc(itemDocRef, dataToSave);
     console.log("Single item saved successfully to Firestore with ID:", item.id);
@@ -94,7 +114,7 @@ export const saveMultipleInventoryItemsToFirestore = async (items: InventoryItem
     throw new Error("Database not initialized. Check Firebase configuration in firebase.ts.");
   }
   
-  console.log("saveMultipleInventoryItemsToFirestore received items for batch save:", items);
+  console.log("saveMultipleInventoryItemsToFirestore received items for batch save:", items.length, "items.");
 
   if (!items || items.length === 0) {
     console.log("No items provided to save in batch. Skipping Firestore write.");
@@ -106,11 +126,11 @@ export const saveMultipleInventoryItemsToFirestore = async (items: InventoryItem
     let validItemsInBatchCount = 0;
     items.forEach(item => {
       if (!item.id || item.id.trim() === "") {
-        console.error("Item missing ID during batch preparation, skipping this item:", item);
+        console.warn("Item missing ID during batch preparation, skipping this item:", item);
         return; 
       }
        if (typeof item.category !== 'string' || typeof item.name !== 'string' || typeof item.buyingPrice !== 'number' || typeof item.price !== 'number' || typeof item.stock !== 'number') {
-        console.error("Invalid item data types in batch preparation, skipping this item:", item);
+        console.warn("Invalid item data types in batch preparation, skipping this item:", item);
         return; 
       }
       const itemDocRef = doc(db, "inventory", item.id);
@@ -121,11 +141,9 @@ export const saveMultipleInventoryItemsToFirestore = async (items: InventoryItem
         buyingPrice: item.buyingPrice,
         price: item.price,
         stock: item.stock,
-        description: item.description || ''
+        description: item.description || '',
+        purchaseDate: item.purchaseDate || new Date().toLocaleDateString('en-CA')
       };
-      if (item.purchaseDate) {
-        itemData.purchaseDate = item.purchaseDate;
-      }
 
       batch.set(itemDocRef, itemData);
       validItemsInBatchCount++;
@@ -157,6 +175,13 @@ export const deleteInventoryItemFromFirestore = async (itemId: string): Promise<
     throw error;
   }
 };
+
+// Firestore collection references
+const inventoryCollectionRef = collection(db, "inventory");
+const settingsDocRef = doc(db, "settings", "appState");
+const buyerProfilesCollectionRef = collection(db, "buyerProfiles");
+const salesRecordsCollectionRef = collection(db, "salesRecords");
+
 
 // --- Settings Functions ---
 export const getAppSettingsFromFirestore = async (initialGlobalBuyerAddress: BuyerAddress): Promise<AppSettingsType> => {
@@ -308,7 +333,7 @@ export const saveSalesRecordsToFirestore = async (salesRecords: SalesRecord[]): 
   try {
     const batch = writeBatch(db);
     salesRecords.forEach(record => {
-      const recordDocRef = doc(salesRecordsCollectionRef, record.id); // Use the pre-generated unique ID for the doc
+      const recordDocRef = doc(salesRecordsCollectionRef, record.id); 
       batch.set(recordDocRef, record);
     });
     console.log(`Attempting to commit batch with ${salesRecords.length} sales records to Firestore.`);
@@ -325,7 +350,7 @@ export const getSalesRecordsFromFirestore = async (): Promise<SalesRecord[]> => 
     const querySnapshot = await getDocs(salesRecordsCollectionRef);
     const records: SalesRecord[] = [];
     querySnapshot.forEach((docSnap) => {
-      records.push(docSnap.data() as SalesRecord); // ID is part of the document data now
+      records.push(docSnap.data() as SalesRecord); 
     });
     return records;
   } catch (error) {
@@ -336,3 +361,5 @@ export const getSalesRecordsFromFirestore = async (): Promise<SalesRecord[]> => 
 
 
 export { db, auth };
+
+    

@@ -11,8 +11,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Store, Package, FileText, Printer, Settings, Download, Upload, Keyboard, BarChart3 } from 'lucide-react'; // Added BarChart3
+import { Store, Package, FileText, Printer, Settings, Download, Upload, Keyboard, BarChart3, LogOut } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { logoutUser } from '@/lib/firebase';
+import { useRouter } from 'next/navigation';
 
 interface AppHeaderProps {
   activeSection: string;
@@ -33,6 +35,7 @@ export default function AppHeader({
 }: AppHeaderProps) {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+  const router = useRouter();
 
   const handleImportClick = () => {
     fileInputRef.current?.click();
@@ -40,16 +43,21 @@ export default function AppHeader({
 
   const handleFileSelected = (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = event.target.files; 
-    toast({
-      title: "DEBUG: AppHeader",
-      description: "File selected, onImportData prop is about to be called with file list.",
-      variant: "default",
-      duration: 5000,
-    });
     onImportData(selectedFiles); 
     
     if (event.target) { 
         (event.target as HTMLInputElement).value = ''; 
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await logoutUser();
+      toast({ title: 'Logged Out', description: 'You have been successfully logged out.'});
+      router.push('/login');
+    } catch (error) {
+      toast({ title: 'Logout Failed', description: 'Could not log out. Please try again.', variant: 'destructive'});
+      console.error("Logout error:", error);
     }
   };
 
@@ -112,6 +120,11 @@ export default function AppHeader({
                 <Keyboard className="mr-2 h-4 w-4" />
                 Keyboard Shortcuts
               </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleLogout}>
+                <LogOut className="mr-2 h-4 w-4" />
+                Logout
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </nav>
@@ -119,3 +132,5 @@ export default function AppHeader({
     </header>
   );
 }
+
+    
