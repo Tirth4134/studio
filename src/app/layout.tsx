@@ -1,5 +1,7 @@
+
 import type { Metadata } from 'next';
 import './globals.css';
+import 'react-day-picker/dist/style.css'; // Import react-day-picker styles
 import { Toaster } from "@/components/ui/toaster";
 
 export const metadata: Metadata = {
