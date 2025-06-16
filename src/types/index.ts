@@ -34,6 +34,13 @@ export interface AppData {
   buyerAddress?: BuyerAddress; // To persist if needed in future
 }
 
+export interface AppSettings{
+  buyerAddress: any;
+  // printMode: boolean;
+  invoiceCounter: any;
+
+}
+
 // Represents a buyer profile stored by GSTIN
 export interface BuyerProfile extends BuyerAddress {
   // GSTIN is the key, so it's implicitly part of the profile when retrieved

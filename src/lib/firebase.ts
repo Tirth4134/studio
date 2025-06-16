@@ -1,5 +1,6 @@
 
 import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
+import { getAuth } from "firebase/auth"; // Added for Firebase Auth
 import { getFirestore, collection, doc, getDoc, setDoc, getDocs, writeBatch, deleteDoc } from "firebase/firestore";
 import type { InventoryItem, BuyerAddress, BuyerProfile, AppSettings as AppSettingsType } from '@/types';
 
@@ -7,13 +8,14 @@ import type { InventoryItem, BuyerAddress, BuyerProfile, AppSettings as AppSetti
 // You can find these details in your Firebase project settings:
 // Project settings > General > Your apps > SDK setup and configuration
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY", // Replace with your API Key
-  authDomain: "YOUR_AUTH_DOMAIN", // e.g., your-project-id.firebaseapp.com
-  projectId: "YOUR_PROJECT_ID", // Replace with your Project ID (e.g., "invoiceflow-kyl1w")
-  storageBucket: "YOUR_STORAGE_BUCKET", // e.g., your-project-id.appspot.com
-  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "YOUR_API_KEY", // Replace with your actual API key
+  authDomain: "YOUR_PROJECT_ID.firebaseapp.com", // Replace with your actual auth domain
+  projectId: "YOUR_PROJECT_ID", // Replace with your actual project ID
+  storageBucket: "YOUR_PROJECT_ID.appspot.com", // Replace with your actual storage bucket
+  messagingSenderId: "YOUR_MESSAGING_SENDER_ID", // Replace with your actual messaging sender ID
+  appId: "YOUR_APP_ID" // Replace with your actual app ID
 };
+
 
 let app: FirebaseApp;
 if (!getApps().length) {
@@ -23,6 +25,7 @@ if (!getApps().length) {
 }
 
 const db = getFirestore(app);
+const auth = getAuth(app); // Initialize Firebase Auth
 
 // Firestore collection references
 const inventoryCollectionRef = collection(db, "inventory");
@@ -34,7 +37,7 @@ export const getInventoryFromFirestore = async (): Promise<InventoryItem[]> => {
   try {
     const querySnapshot = await getDocs(inventoryCollectionRef);
     const items: InventoryItem[] = [];
-    querySnapshot.forEach((docSnap) => { // Changed doc to docSnap to avoid conflict
+    querySnapshot.forEach((docSnap) => {
       items.push({ id: docSnap.id, ...docSnap.data() } as InventoryItem);
     });
     return items;
@@ -51,7 +54,7 @@ export const saveInventoryItemToFirestore = async (item: InventoryItem): Promise
       category: item.category,
       name: item.name,
       buyingPrice: item.buyingPrice,
-      price: item.price, 
+      price: item.price,
       stock: item.stock,
       description: item.description || ''
     });
@@ -70,7 +73,7 @@ export const saveMultipleInventoryItemsToFirestore = async (items: InventoryItem
         category: item.category,
         name: item.name,
         buyingPrice: item.buyingPrice,
-        price: item.price, 
+        price: item.price,
         stock: item.stock,
         description: item.description || ''
       });
@@ -99,7 +102,6 @@ export const getAppSettingsFromFirestore = async (initialGlobalBuyerAddress: Buy
     const docSnap = await getDoc(settingsDocRef);
     if (docSnap.exists()) {
       const data = docSnap.data() as AppSettingsType;
-      // Ensure all fields from initialGlobalBuyerAddress are present if not in Firestore
       const mergedBuyerAddress: BuyerAddress = {
         name: data.buyerAddress?.name || initialGlobalBuyerAddress.name,
         addressLine1: data.buyerAddress?.addressLine1 || initialGlobalBuyerAddress.addressLine1,
@@ -114,21 +116,19 @@ export const getAppSettingsFromFirestore = async (initialGlobalBuyerAddress: Buy
         buyerAddress: mergedBuyerAddress
       };
     } else {
-      // Firestore document doesn't exist, so create it with initial/default values
       const defaultSettings: AppSettingsType = {
         invoiceCounter: 1,
         buyerAddress: {
-            ...initialGlobalBuyerAddress, // Use the passed global default
-            email: initialGlobalBuyerAddress.email || ''
-        }
+          ...initialGlobalBuyerAddress,
+          email: initialGlobalBuyerAddress.email || ''
+        },
       };
       await setDoc(settingsDocRef, defaultSettings);
       return defaultSettings;
     }
   } catch (error) {
     console.error("Error fetching app settings from Firestore:", error);
-    // Fallback to defaults, but re-throw so the caller knows there was an issue.
-     throw error;
+    throw error;
   }
 };
 
@@ -200,11 +200,11 @@ export const saveBuyerProfile = async (gstin: string, address: BuyerAddress): Pr
         contact: address.contact,
         email: address.email || '',
     };
-    await setDoc(profileDocRef, profileData); // Use setDoc to create or overwrite
+    await setDoc(profileDocRef, profileData);
   } catch (error) {
     console.error(`Error saving buyer profile for GSTIN ${gstin}:`, error);
     throw error;
   }
 };
 
-export { db };
+export { db, auth }; // Export auth instance
