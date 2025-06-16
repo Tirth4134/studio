@@ -5,12 +5,12 @@ import type { InventoryItem, BuyerAddress, BuyerProfile } from '@/types';
 
 // IMPORTANT: Replace with your actual Firebase project configuration
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_AUTH_DOMAIN",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_STORAGE_BUCKET",
-  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyBFkOKPJM9N0aoP5pVYkIV30DFjTHTEiGo",
+  authDomain: "invoiceflow-kyl1w.firebaseapp.com",
+  projectId: "invoiceflow-kyl1w",
+  storageBucket: "invoiceflow-kyl1w.firebasestorage.app",
+  messagingSenderId: "1040042171668",
+  appId: "1:1040042171668:web:5326322aceada82f167601"
 };
 
 let app: FirebaseApp;
@@ -104,17 +104,30 @@ export const getAppSettingsFromFirestore = async (initialBuyerAddress: BuyerAddr
         buyerAddress: {
           ...initialBuyerAddress, // Provide defaults for any missing fields
           ...data.buyerAddress, // Overlay with stored data
+          email: data.buyerAddress?.email || initialBuyerAddress.email || '', // Ensure email exists
         }
       };
     } else {
       // Initialize settings if they don't exist
-      const defaultSettings: AppSettings = { invoiceCounter: 1, buyerAddress: initialBuyerAddress };
+      const defaultSettings: AppSettings = { 
+        invoiceCounter: 1, 
+        buyerAddress: {
+            ...initialBuyerAddress,
+            email: initialBuyerAddress.email || ''
+        } 
+      };
       await setDoc(settingsDocRef, defaultSettings);
       return defaultSettings;
     }
   } catch (error) {
     console.error("Error fetching app settings from Firestore:", error);
-    return { invoiceCounter: 1, buyerAddress: initialBuyerAddress }; // Fallback to defaults
+    return { 
+        invoiceCounter: 1, 
+        buyerAddress: {
+            ...initialBuyerAddress,
+            email: initialBuyerAddress.email || ''
+        } 
+    }; // Fallback to defaults
   }
 };
 
@@ -129,7 +142,11 @@ export const saveInvoiceCounterToFirestore = async (counter: number): Promise<vo
 // Saves the buyer address to the general app settings (e.g., last used buyer)
 export const saveBuyerAddressToAppSettings = async (address: BuyerAddress): Promise<void> => {
   try {
-    await setDoc(settingsDocRef, { buyerAddress: address }, { merge: true });
+    const addressToSave = {
+        ...address,
+        email: address.email || '' // Ensure email is at least an empty string
+    };
+    await setDoc(settingsDocRef, { buyerAddress: addressToSave }, { merge: true });
   } catch (error) {
     console.error("Error saving buyer address to app settings:", error);
   }
@@ -137,7 +154,14 @@ export const saveBuyerAddressToAppSettings = async (address: BuyerAddress): Prom
 
 export const saveAllAppSettingsToFirestore = async (settings: AppSettings): Promise<void> => {
   try {
-    await setDoc(settingsDocRef, settings);
+    const settingsToSave = {
+        ...settings,
+        buyerAddress: {
+            ...settings.buyerAddress,
+            email: settings.buyerAddress.email || ''
+        }
+    };
+    await setDoc(settingsDocRef, settingsToSave);
   } catch (error) {
     console.error("Error saving all app settings to Firestore:", error);
   }
@@ -150,7 +174,9 @@ export const getBuyerProfileByGSTIN = async (gstin: string): Promise<BuyerProfil
     const profileDocRef = doc(db, "buyerProfiles", gstin);
     const docSnap = await getDoc(profileDocRef);
     if (docSnap.exists()) {
-      return docSnap.data() as BuyerProfile;
+      const data = docSnap.data() as BuyerProfile;
+       // Ensure email field is present
+      return { ...data, email: data.email || '' };
     }
     return null;
   } catch (error) {
@@ -168,7 +194,7 @@ export const saveBuyerProfile = async (gstin: string, address: BuyerAddress): Pr
         name: address.name,
         addressLine1: address.addressLine1,
         addressLine2: address.addressLine2,
-        gstin: address.gstin, // Redundant as it's the doc ID, but good for data consistency
+        gstin: address.gstin, 
         stateNameAndCode: address.stateNameAndCode,
         contact: address.contact,
         email: address.email || '', // Save empty string if undefined
