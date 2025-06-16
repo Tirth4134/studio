@@ -1,7 +1,7 @@
 
 import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
 import { getFirestore, collection, doc, getDoc, setDoc, getDocs, writeBatch, deleteDoc } from "firebase/firestore";
-import type { InventoryItem, BuyerAddress } from '@/types';
+import type { InventoryItem, BuyerAddress, BuyerProfile } from '@/types';
 
 // IMPORTANT: Replace with your actual Firebase project configuration
 const firebaseConfig = {
@@ -25,6 +25,7 @@ const db = getFirestore(app);
 // Firestore collection references
 const inventoryCollection = collection(db, "inventory");
 const settingsDocRef = doc(db, "settings", "appState");
+const buyerProfilesCollection = collection(db, "buyerProfiles");
 
 // --- Inventory Functions ---
 export const getInventoryFromFirestore = async (): Promise<InventoryItem[]> => {
@@ -47,7 +48,8 @@ export const saveInventoryItemToFirestore = async (item: InventoryItem): Promise
     await setDoc(itemDocRef, { 
       category: item.category,
       name: item.name,
-      price: item.price,
+      buyingPrice: item.buyingPrice,
+      price: item.price, // Selling price
       stock: item.stock,
       description: item.description || ''
     });
@@ -64,7 +66,8 @@ export const saveMultipleInventoryItemsToFirestore = async (items: InventoryItem
       batch.set(itemDocRef, {
         category: item.category,
         name: item.name,
-        price: item.price,
+        buyingPrice: item.buyingPrice,
+        price: item.price, // Selling price
         stock: item.stock,
         description: item.description || ''
       });
@@ -84,7 +87,7 @@ export const deleteInventoryItemFromFirestore = async (itemId: string): Promise<
   }
 };
 
-// --- Settings Functions (Invoice Counter & Buyer Address) ---
+// --- Settings Functions (Invoice Counter & Default/Last Used Buyer Address) ---
 interface AppSettings {
   invoiceCounter: number;
   buyerAddress: BuyerAddress;
@@ -94,7 +97,15 @@ export const getAppSettingsFromFirestore = async (initialBuyerAddress: BuyerAddr
   try {
     const docSnap = await getDoc(settingsDocRef);
     if (docSnap.exists()) {
-      return docSnap.data() as AppSettings;
+      const data = docSnap.data() as AppSettings;
+      // Ensure buyerAddress has all fields, including new optional ones
+      return {
+        invoiceCounter: data.invoiceCounter,
+        buyerAddress: {
+          ...initialBuyerAddress, // Provide defaults for any missing fields
+          ...data.buyerAddress, // Overlay with stored data
+        }
+      };
     } else {
       // Initialize settings if they don't exist
       const defaultSettings: AppSettings = { invoiceCounter: 1, buyerAddress: initialBuyerAddress };
@@ -115,11 +126,12 @@ export const saveInvoiceCounterToFirestore = async (counter: number): Promise<vo
   }
 };
 
-export const saveBuyerAddressToFirestore = async (address: BuyerAddress): Promise<void> => {
+// Saves the buyer address to the general app settings (e.g., last used buyer)
+export const saveBuyerAddressToAppSettings = async (address: BuyerAddress): Promise<void> => {
   try {
     await setDoc(settingsDocRef, { buyerAddress: address }, { merge: true });
   } catch (error) {
-    console.error("Error saving buyer address to Firestore:", error);
+    console.error("Error saving buyer address to app settings:", error);
   }
 };
 
@@ -130,5 +142,42 @@ export const saveAllAppSettingsToFirestore = async (settings: AppSettings): Prom
     console.error("Error saving all app settings to Firestore:", error);
   }
 }
+
+// --- Buyer Profiles (Stored by GSTIN) ---
+export const getBuyerProfileByGSTIN = async (gstin: string): Promise<BuyerProfile | null> => {
+  if (!gstin || gstin.trim() === "") return null;
+  try {
+    const profileDocRef = doc(db, "buyerProfiles", gstin);
+    const docSnap = await getDoc(profileDocRef);
+    if (docSnap.exists()) {
+      return docSnap.data() as BuyerProfile;
+    }
+    return null;
+  } catch (error) {
+    console.error(`Error fetching buyer profile for GSTIN ${gstin}:`, error);
+    return null;
+  }
+};
+
+export const saveBuyerProfile = async (gstin: string, address: BuyerAddress): Promise<void> => {
+   if (!gstin || gstin.trim() === "") return;
+  try {
+    const profileDocRef = doc(db, "buyerProfiles", gstin);
+    // Ensure we are saving all fields of BuyerAddress, including optional ones if present
+    const profileData: BuyerProfile = {
+        name: address.name,
+        addressLine1: address.addressLine1,
+        addressLine2: address.addressLine2,
+        gstin: address.gstin, // Redundant as it's the doc ID, but good for data consistency
+        stateNameAndCode: address.stateNameAndCode,
+        contact: address.contact,
+        email: address.email || '', // Save empty string if undefined
+    };
+    await setDoc(profileDocRef, profileData);
+  } catch (error) {
+    console.error(`Error saving buyer profile for GSTIN ${gstin}:`, error);
+  }
+};
+
 
 export { db };

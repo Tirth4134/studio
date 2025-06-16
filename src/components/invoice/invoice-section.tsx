@@ -6,8 +6,7 @@ import CreateInvoiceForm from './create-invoice-form';
 import InvoicePreview from './invoice-preview';
 import { useToast } from '@/hooks/use-toast';
 import type { Dispatch, SetStateAction } from 'react';
-import { saveMultipleInventoryItemsToFirestore, getInventoryFromFirestore } from '@/lib/firebase';
-
+// Removed unused Firestore imports from here as page.tsx handles them
 
 interface InvoiceSectionProps {
   inventory: InventoryItem[];
@@ -18,7 +17,8 @@ interface InvoiceSectionProps {
   invoiceDate: string;
   onPrintInvoice: () => void;
   buyerAddress: BuyerAddress;
-  setBuyerAddress: (address: BuyerAddress) => Promise<void> | void;
+  setBuyerAddress: (address: BuyerAddress | ((prevState: BuyerAddress) => BuyerAddress)) => Promise<void> | void; // Updated type for functional updates
+  onLookupBuyerByGSTIN: (gstin: string) => Promise<void>; // New prop for GSTIN lookup
 }
 
 export default function InvoiceSection({
@@ -31,6 +31,7 @@ export default function InvoiceSection({
   onPrintInvoice,
   buyerAddress,
   setBuyerAddress,
+  onLookupBuyerByGSTIN, // New prop
 }: InvoiceSectionProps) {
   const { toast } = useToast();
 
@@ -54,18 +55,7 @@ export default function InvoiceSection({
       setInvoiceItems(prevItems => [...prevItems, { ...itemToAdd, category: inventoryItem?.category }]);
     }
 
-    // Update stock in Firestore and then update local state
     if (inventoryItem) {
-      const updatedInventoryItem = { ...inventoryItem, stock: inventoryItem.stock - itemToAdd.quantity };
-      // This will update a single item. The parent `setInventory` from page.tsx is for batch updates.
-      // Ideally, `saveInventoryItemToFirestore` would be used here, but `setInventory` expects the full list.
-      // For now, we update the local inventory list and rely on the parent's `updateInventory` (which is `setInventory` prop)
-      // to persist the whole list if it's called with a function.
-      // A more granular update would be:
-      // await saveInventoryItemToFirestore(updatedInventoryItem);
-      // setInventory(prevInv => prevInv.map(i => i.id === updatedInventoryItem.id ? updatedInventoryItem : i));
-
-      // Using the passed setInventory which handles Firestore updates for the whole list
       setInventory(prevInventory =>
         prevInventory.map(invItem =>
           invItem.id === itemToAdd.id
@@ -75,7 +65,6 @@ export default function InvoiceSection({
       );
     }
     
-
     toast({
       title: "Success",
       description: `${itemToAdd.name} ${existingItemIndex !== -1 ? 'quantity updated' : 'added'} to invoice.`
@@ -83,17 +72,12 @@ export default function InvoiceSection({
   };
 
   const handleRemoveItemFromInvoice = async (itemIdToRemove: string, quantityToReturn: number) => {
-    const inventoryItem = inventory.find(inv => inv.id === itemIdToRemove);
-    if (inventoryItem) {
-      const updatedInventoryItem = { ...inventoryItem, stock: inventoryItem.stock + quantityToReturn };
-      // await saveInventoryItemToFirestore(updatedInventoryItem);
-      // setInventory(prevInv => prevInv.map(i => i.id === updatedInventoryItem.id ? updatedInventoryItem : i));
-       setInventory(prevInventory =>
-        prevInventory.map(invItem =>
-          invItem.id === itemIdToRemove ? { ...invItem, stock: invItem.stock + quantityToReturn } : invItem
-        )
-      );
-    }
+    // const inventoryItem = inventory.find(inv => inv.id === itemIdToRemove); // This was for direct Firestore save, now handled by setInventory prop
+    setInventory(prevInventory =>
+      prevInventory.map(invItem =>
+        invItem.id === itemIdToRemove ? { ...invItem, stock: invItem.stock + quantityToReturn } : invItem
+      )
+    );
     setInvoiceItems((prevItems) => prevItems.filter((item) => item.id !== itemIdToRemove));
     toast({ title: "Success", description: "Item removed from invoice." });
   };
@@ -104,7 +88,6 @@ export default function InvoiceSection({
       return;
     }
 
-    // Create a map of items to update in inventory
     const stockToRestore: { [id: string]: number } = {};
     invoiceItems.forEach(item => {
         stockToRestore[item.id] = (stockToRestore[item.id] || 0) + item.quantity;
@@ -117,9 +100,7 @@ export default function InvoiceSection({
         return invItem;
     });
     
-    // This assumes setInventory will handle Firestore persistence for the entire list.
-    await setInventory(updatedInventory);
-
+    await setInventory(updatedInventory); // Propagates to page.tsx which handles Firestore
 
     setInvoiceItems([]);
     toast({ title: "Success", description: "Invoice cleared." });
@@ -131,7 +112,8 @@ export default function InvoiceSection({
         inventory={inventory}
         onAddItemToInvoice={handleAddItemToInvoice}
         buyerAddress={buyerAddress}
-        setBuyerAddress={setBuyerAddress} // This should be the Firestore-aware updateBuyerAddress from page.tsx
+        setBuyerAddress={setBuyerAddress}
+        onLookupBuyerByGSTIN={onLookupBuyerByGSTIN} // Pass down the lookup function
       />
       <InvoicePreview
         invoiceItems={invoiceItems}

@@ -22,7 +22,8 @@ interface EditItemDialogProps {
 export default function EditItemDialog({ isOpen, onOpenChange, itemToEdit, onUpdateItem }: EditItemDialogProps) {
   const [category, setCategory] = useState('');
   const [itemName, setItemName] = useState('');
-  const [price, setPrice] = useState('');
+  const [buyingPrice, setBuyingPrice] = useState('');
+  const [sellingPrice, setSellingPrice] = useState(''); // 'price' in InventoryItem is selling price
   const [stock, setStock] = useState('');
   const [description, setDescription] = useState('');
   const [isEnriching, setIsEnriching] = useState(false);
@@ -32,7 +33,8 @@ export default function EditItemDialog({ isOpen, onOpenChange, itemToEdit, onUpd
     if (itemToEdit) {
       setCategory(itemToEdit.category);
       setItemName(itemToEdit.name);
-      setPrice(itemToEdit.price.toString());
+      setBuyingPrice(itemToEdit.buyingPrice.toString());
+      setSellingPrice(itemToEdit.price.toString()); // itemToEdit.price is selling price
       setStock(itemToEdit.stock.toString());
       setDescription(itemToEdit.description || '');
     }
@@ -40,16 +42,17 @@ export default function EditItemDialog({ isOpen, onOpenChange, itemToEdit, onUpd
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!category || !itemName || !price || !stock || !itemToEdit) {
+    if (!category || !itemName || !buyingPrice || !sellingPrice || !stock || !itemToEdit) {
       toast({ title: "Error", description: "Please fill all required fields.", variant: "destructive" });
       return;
     }
 
-    const numPrice = parseFloat(price);
+    const numBuyingPrice = parseFloat(buyingPrice);
+    const numSellingPrice = parseFloat(sellingPrice);
     const numStock = parseInt(stock, 10);
 
-    if (isNaN(numPrice) || numPrice <= 0 || isNaN(numStock) || numStock < 0) {
-       toast({ title: "Error", description: "Price and stock must be valid positive numbers.", variant: "destructive" });
+    if (isNaN(numBuyingPrice) || numBuyingPrice <= 0 || isNaN(numSellingPrice) || numSellingPrice <= 0 || isNaN(numStock) || numStock < 0) {
+       toast({ title: "Error", description: "Prices and stock must be valid positive numbers.", variant: "destructive" });
       return;
     }
     
@@ -57,24 +60,25 @@ export default function EditItemDialog({ isOpen, onOpenChange, itemToEdit, onUpd
       ...itemToEdit,
       category,
       name: itemName,
-      price: numPrice,
+      buyingPrice: numBuyingPrice,
+      price: numSellingPrice, // 'price' in InventoryItem is selling price
       stock: numStock,
       description: description,
     });
     toast({ title: "Success", description: `${itemName} updated successfully.` });
-    onOpenChange(false); // Close dialog on successful update
+    onOpenChange(false);
   };
 
   const handleEnrichDescription = async () => {
-    if (!category || !itemName || !price) {
-       toast({ title: "Info", description: "Please enter Category, Item Name, and Price to enrich description.", variant: "default"});
+    if (!category || !itemName || !sellingPrice) {
+       toast({ title: "Info", description: "Please enter Category, Item Name, and Selling Price to enrich description.", variant: "default"});
       return;
     }
     setIsEnriching(true);
     try {
-      const numPrice = parseFloat(price);
+      const numPrice = parseFloat(sellingPrice); // Use selling price for description context
        if (isNaN(numPrice) || numPrice <=0) {
-         toast({ title: "Error", description: "Please enter a valid price.", variant: "destructive" });
+         toast({ title: "Error", description: "Please enter a valid selling price.", variant: "destructive" });
          setIsEnriching(false);
          return;
       }
@@ -107,8 +111,12 @@ export default function EditItemDialog({ isOpen, onOpenChange, itemToEdit, onUpd
               <Input id="edit-itemName" value={itemName} onChange={(e) => setItemName(e.target.value)} />
             </div>
             <div>
-              <Label htmlFor="edit-price">Price ($)</Label>
-              <Input id="edit-price" type="number" value={price} onChange={(e) => setPrice(e.target.value)} step="0.01" />
+              <Label htmlFor="edit-buyingPrice">Buying Price ($)</Label>
+              <Input id="edit-buyingPrice" type="number" value={buyingPrice} onChange={(e) => setBuyingPrice(e.target.value)} step="0.01" />
+            </div>
+            <div>
+              <Label htmlFor="edit-sellingPrice">Selling Price ($)</Label>
+              <Input id="edit-sellingPrice" type="number" value={sellingPrice} onChange={(e) => setSellingPrice(e.target.value)} step="0.01" />
             </div>
             <div>
               <Label htmlFor="edit-stock">Stock Quantity</Label>
@@ -119,7 +127,22 @@ export default function EditItemDialog({ isOpen, onOpenChange, itemToEdit, onUpd
             <Label htmlFor="edit-description">Description</Label>
             <Textarea id="edit-description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Item description" />
           </div>
-          <DialogFooter>
+          
+          <DialogFooter className="items-center gap-2">
+            <Button 
+                type="button" 
+                variant="outline" 
+                onClick={handleEnrichDescription} 
+                disabled={isEnriching}
+                className="mt-2 md:mt-0"
+              >
+                {isEnriching ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Sparkles className="mr-2 h-4 w-4" />
+                )}
+                Enrich Description
+              </Button>
             <DialogClose asChild>
               <Button type="button" variant="outline">Cancel</Button>
             </DialogClose>

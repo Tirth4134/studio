@@ -16,15 +16,17 @@ import {
   deleteInventoryItemFromFirestore,
   getAppSettingsFromFirestore,
   saveInvoiceCounterToFirestore,
-  saveBuyerAddressToFirestore,
-  saveAllAppSettingsToFirestore
+  saveBuyerAddressToAppSettings, // Updated to save to general app settings
+  saveAllAppSettingsToFirestore,
+  saveBuyerProfile, // New: To save buyer profile by GSTIN
+  getBuyerProfileByGSTIN // New: To fetch buyer profile by GSTIN
 } from '@/lib/firebase';
 
 const initialInventoryForSeed: InventoryItem[] = [
-  { id: generateUniqueId(), category: "Mobile", name: "iPhone 15 Pro", price: 999.99, stock: 10, description: "The latest iPhone with Pro features." },
-  { id: generateUniqueId(), category: "Mobile", name: "Samsung Galaxy S24 Ultra", price: 1199.99, stock: 15, description: "Flagship Android phone from Samsung." },
-  { id: generateUniqueId(), category: "Laptop", name: "MacBook Air M3", price: 1099.00, stock: 8, description: "Thin and light laptop with Apple's M3 chip." },
-  { id: generateUniqueId(), category: "Accessories", name: "Wireless Charger", price: 49.99, stock: 25, description: "Qi-certified wireless charging pad." },
+  { id: generateUniqueId(), category: "Mobile", name: "iPhone 15 Pro", buyingPrice: 800, price: 999.99, stock: 10, description: "The latest iPhone with Pro features." },
+  { id: generateUniqueId(), category: "Mobile", name: "Samsung Galaxy S24 Ultra", buyingPrice: 950, price: 1199.99, stock: 15, description: "Flagship Android phone from Samsung." },
+  { id: generateUniqueId(), category: "Laptop", name: "MacBook Air M3", buyingPrice: 900, price: 1099.00, stock: 8, description: "Thin and light laptop with Apple's M3 chip." },
+  { id: generateUniqueId(), category: "Accessories", name: "Wireless Charger", buyingPrice: 25, price: 49.99, stock: 25, description: "Qi-certified wireless charging pad." },
 ];
 
 const initialBuyerAddressGlobal: BuyerAddress = {
@@ -34,6 +36,7 @@ const initialBuyerAddressGlobal: BuyerAddress = {
   gstin: '24AAXFN4403B1ZH (Placeholder)',
   stateNameAndCode: 'Gujarat, Code: 24 (Placeholder)',
   contact: '9313647568 (Placeholder)',
+  email: 'contact@neelkanth.com (Placeholder)',
 };
 
 export default function HomePage() {
@@ -53,7 +56,7 @@ export default function HomePage() {
   useEffect(() => {
     setIsClient(true);
     const today = new Date();
-    setInvoiceDate(today.toLocaleDateString());
+    setInvoiceDate(today.toLocaleDateString('en-CA')); // YYYY-MM-DD for consistency
   }, []);
 
   // Fetch initial data from Firestore
@@ -66,11 +69,8 @@ export default function HomePage() {
           const appSettings = await getAppSettingsFromFirestore(initialBuyerAddressGlobal);
 
           if (firestoreInventory.length === 0 && appSettings.invoiceCounter === 1 && appSettings.buyerAddress.name === initialBuyerAddressGlobal.name) {
-            // Firestore is likely empty or new, seed initial data
             await saveMultipleInventoryItemsToFirestore(initialInventoryForSeed);
             setInventory(initialInventoryForSeed);
-            // App settings will be the defaults (invoiceCounter: 1, initialBuyerAddress)
-            // getAppSettingsFromFirestore already saves these defaults if not present.
             setInvoiceCounter(appSettings.invoiceCounter); 
             setBuyerAddress(appSettings.buyerAddress);   
           } else {
@@ -80,13 +80,12 @@ export default function HomePage() {
           }
         } catch (error) {
             console.error("Error during initial data fetch and processing:", error);
-            // Set to default/empty states if fetching fails, so UI doesn't hang on error.
             setInventory([]);
             setInvoiceCounter(1);
             setBuyerAddress(initialBuyerAddressGlobal);
             toast({
                 title: "Loading Error",
-                description: "Could not load data from the server. Please check your connection or Firebase setup.",
+                description: "Could not load data. Using defaults.",
                 variant: "destructive",
                 duration: 7000
             });
@@ -96,7 +95,7 @@ export default function HomePage() {
       };
       fetchData();
     }
-  }, [isClient, toast]); // Added toast to dependencies as it's used in catch
+  }, [isClient, toast]);
 
   useEffect(() => {
     setCurrentInvoiceNumber(generateInvoiceNumber(invoiceCounter));
@@ -107,9 +106,10 @@ export default function HomePage() {
     await saveInvoiceCounterToFirestore(newCounter);
   };
 
-  const updateBuyerAddress = async (newAddress: BuyerAddress) => {
+  // This updates the buyer address in the main app settings (last used/default)
+  const updateCurrentBuyerAddress = async (newAddress: BuyerAddress) => {
     setBuyerAddress(newAddress);
-    await saveBuyerAddressToFirestore(newAddress);
+    await saveBuyerAddressToAppSettings(newAddress);
   };
   
   const updateInventory = async (newInventory: InventoryItem[] | ((prevState: InventoryItem[]) => InventoryItem[])) => {
@@ -118,7 +118,7 @@ export default function HomePage() {
         const updatedState = newInventory(prevState);
         saveMultipleInventoryItemsToFirestore(updatedState).catch(err => {
           console.error("Failed to save updated inventory state", err);
-          toast({ title: "Save Error", description: "Could not save inventory changes to the server.", variant: "destructive"});
+          toast({ title: "Save Error", description: "Could not save inventory changes.", variant: "destructive"});
         });
         return updatedState;
       });
@@ -126,21 +126,61 @@ export default function HomePage() {
       setInventory(newInventory);
       await saveMultipleInventoryItemsToFirestore(newInventory).catch(err => {
           console.error("Failed to save inventory to the server", err);
-          toast({ title: "Save Error", description: "Could not save inventory to the server.", variant: "destructive"});
+          toast({ title: "Save Error", description: "Could not save inventory.", variant: "destructive"});
       });
     }
   };
 
-
-  const handlePrintInvoice = useCallback(() => {
+  const handlePrintInvoice = useCallback(async () => {
     if (invoiceItems.length === 0) {
       toast({ title: "Cannot Print", description: "Invoice is empty. Add items to print.", variant: "destructive" });
       return;
     }
+
+    // Save buyer profile if GSTIN is present
+    if (buyerAddress.gstin && buyerAddress.gstin.trim() !== "") {
+      try {
+        await saveBuyerProfile(buyerAddress.gstin, buyerAddress);
+        toast({ title: "Buyer Profile Saved", description: `Details for GSTIN ${buyerAddress.gstin} stored.`, variant: "default", duration: 3000});
+      } catch (error) {
+        console.error("Error saving buyer profile:", error);
+        toast({ title: "Profile Save Error", description: `Could not save buyer profile.`, variant: "destructive"});
+      }
+    } else {
+         toast({ title: "Info", description: `Buyer profile not saved as GSTIN is empty.`, variant: "default", duration: 3000});
+    }
+
     window.print();
     updateInvoiceCounter(invoiceCounter + 1);
-  }, [invoiceItems.length, invoiceCounter, toast]);
+  }, [invoiceItems.length, invoiceCounter, toast, buyerAddress]);
 
+  const lookupAndSetBuyerAddress = async (gstin: string) => {
+    if (!gstin || gstin.trim() === "") return;
+    setIsLoading(true);
+    try {
+      const profile = await getBuyerProfileByGSTIN(gstin);
+      if (profile) {
+        // Ensure all fields, including new optional ones, are present or defaulted
+        const completeProfile: BuyerAddress = {
+            ...initialBuyerAddressGlobal, // Start with defaults (especially for email if not in old profiles)
+            ...profile, // Overlay with fetched profile data
+            email: profile.email || '', // Ensure email is at least an empty string
+        };
+        setBuyerAddress(completeProfile); // Update local state for the form
+        await saveBuyerAddressToAppSettings(completeProfile); // Update the "last used" buyer in general settings
+        toast({ title: "Buyer Found", description: `Details for ${profile.name} loaded.`, variant: "default" });
+      } else {
+        toast({ title: "Buyer Not Found", description: "No existing profile for this GSTIN. Please enter details manually.", variant: "default" });
+        // Optionally, clear parts of the form if desired, or leave current data
+        // setBuyerAddress(prev => ({ ...initialBuyerAddressGlobal, gstin: prev.gstin })); // Resets to default but keeps gstin
+      }
+    } catch (error) {
+      console.error("Error looking up buyer by GSTIN:", error);
+      toast({ title: "Lookup Error", description: "Could not fetch buyer details.", variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleExportData = async () => {
     setIsLoading(true);
@@ -198,12 +238,14 @@ export default function HomePage() {
 
     const name = rawItem.name || rawItem.item_name || rawItem.itemName || rawItem['Item Name'];
     const category = rawItem.category || rawItem.Category;
-    const price = normalizePrice(rawItem.price || rawItem.Price);
+    const sellingPrice = normalizePrice(rawItem.price || rawItem.Price || rawItem.sellingPrice); // Selling price
+    const buyingPrice = normalizePrice(rawItem.buyingPrice); // Buying price
     const stock = normalizeStock(rawItem.stock || rawItem.Stock);
     const description = rawItem.description || rawItem.Description || '';
   
     if (!name || typeof name !== 'string' || name.trim() === '') return null;
-    if (isNaN(price) || price < 0) return null;
+    if (isNaN(sellingPrice) || sellingPrice < 0) return null;
+    if (isNaN(buyingPrice) || buyingPrice < 0) return null; // Validate buying price
     if (isNaN(stock) || stock < 0) return null; 
     if (!category || typeof category !== 'string' || category.trim() === '') return null;
 
@@ -217,13 +259,15 @@ export default function HomePage() {
       id: finalId,
       name: name.trim(),
       category: category.trim(),
-      price,
+      buyingPrice: buyingPrice,
+      price: sellingPrice,
       stock,
       description: typeof description === 'string' ? description.trim() : '',
     };
   };
 
   const handleImportData = (files: FileList | null) => {
+    toast({ title: "DEBUG: handleImportData called in page.tsx", description: `Files: ${files ? files.length : 'null'}` });
     const file = files?.[0];
     if (!file) {
       toast({ title: "Import Cancelled", description: "No file selected.", variant: "default" });
@@ -238,12 +282,15 @@ export default function HomePage() {
 
     const reader = new FileReader();
     reader.onload = async (e) => {
+      toast({ title: "DEBUG: FileReader onload triggered." });
       setIsLoading(true);
       try {
         const result = e.target?.result as string;
         if (!result) throw new Error("File content is empty or unreadable.");
+        toast({ title: "DEBUG: File content read." });
         
         const parsedData = JSON.parse(result);
+        toast({ title: "DEBUG: JSON parsed." });
 
         let parsedItems: any[] = [];
         let importedInvoiceCounter: number | undefined = undefined;
@@ -257,7 +304,11 @@ export default function HomePage() {
           if (typeof parsedData.buyerAddress === 'object' && parsedData.buyerAddress !== null) {
              const ba = parsedData.buyerAddress;
              if (ba.name && ba.addressLine1 && ba.gstin && ba.stateNameAndCode && ba.contact) {
-                importedBuyerAddress = ba;
+                importedBuyerAddress = {
+                    ...initialBuyerAddressGlobal, // provide defaults
+                    ...ba, // overlay with file data
+                    email: ba.email || initialBuyerAddressGlobal.email || '', // ensure email is present
+                };
              } else {
                 toast({ title: "Warning", description: "Buyer address in file is incomplete, skipping.", variant: "default"});
              }
@@ -272,6 +323,7 @@ export default function HomePage() {
           return;
         }
         
+        toast({ title: "DEBUG: Preparing to set inventory." });
         const currentFirestoreInventory = await getInventoryFromFirestore();
         const newInventoryState = [...currentFirestoreInventory];
         const currentInventoryItemIds = new Set(newInventoryState.map(item => item.id));
@@ -300,9 +352,10 @@ export default function HomePage() {
             newInventoryState[existingItemIndex] = {
               ...currentItem,
               id: currentItem.id, 
-              stock: currentItem.stock + importedItem.stock,
-              price: importedItem.price,
-              description: importedItem.description,
+              stock: currentItem.stock + importedItem.stock, // Add to existing stock
+              buyingPrice: importedItem.buyingPrice, // Update buying price
+              price: importedItem.price, // Update selling price
+              description: importedItem.description, // Update description
             };
             updatedCount++;
           } else {
@@ -315,17 +368,24 @@ export default function HomePage() {
         
         await saveMultipleInventoryItemsToFirestore(newInventoryState);
         setInventory(newInventoryState); 
+        toast({ title: "DEBUG: Inventory set." });
 
         if (importedInvoiceCounter !== undefined) {
+          toast({ title: "DEBUG: Preparing to set invoice counter." });
           await saveInvoiceCounterToFirestore(importedInvoiceCounter);
           setInvoiceCounter(importedInvoiceCounter);
+          toast({ title: "DEBUG: Invoice counter set." });
         }
         if (importedBuyerAddress) {
-          await saveBuyerAddressToFirestore(importedBuyerAddress);
+          toast({ title: "DEBUG: Preparing to set buyer address." });
+          await saveBuyerAddressToAppSettings(importedBuyerAddress); // Save to general settings
           setBuyerAddress(importedBuyerAddress);
+          toast({ title: "DEBUG: Buyer address set." });
         }
         
+        toast({ title: "DEBUG: Preparing to clear current invoice items." });
         setInvoiceItems([]); 
+        toast({ title: "DEBUG: Current invoice items cleared." });
 
         toast({ title: 'Import Complete', description: `Processed ${parsedItems.length} records. Settings updated.`, });
         setTimeout(() => {
@@ -350,7 +410,7 @@ export default function HomePage() {
 
   const clearCurrentInvoice = useCallback(async () => {
     if (invoiceItems.length > 0) {
-        const inventoryUpdatesMap = new Map<string, number>(); // Store ID and quantity to add back
+        const inventoryUpdatesMap = new Map<string, number>(); 
 
         invoiceItems.forEach(invoiceItem => {
             inventoryUpdatesMap.set(invoiceItem.id, (inventoryUpdatesMap.get(invoiceItem.id) || 0) + invoiceItem.quantity);
@@ -365,16 +425,14 @@ export default function HomePage() {
         });
         
         await saveMultipleInventoryItemsToFirestore(updatedInventoryForFirestore);
-        setInventory(updatedInventoryForFirestore); // Update local state
+        setInventory(updatedInventoryForFirestore); 
         
-        setInvoiceItems([]); // Clear local invoice items
+        setInvoiceItems([]); 
         toast({ title: "New Invoice", description: "Current invoice cleared and stock restored." });
     } else {
         toast({ title: "New Invoice", description: "Invoice is already empty.", variant: "default" });
     }
-    // Optionally reset buyer address if it's not meant to persist across new invoices
-    // await updateBuyerAddress(initialBuyerAddressGlobal); 
-  }, [invoiceItems, toast, setInventory]); // Added setInventory to dependencies
+  }, [invoiceItems, toast, setInventory]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -426,7 +484,8 @@ export default function HomePage() {
             invoiceDate={invoiceDate}
             onPrintInvoice={handlePrintInvoice}
             buyerAddress={buyerAddress}
-            setBuyerAddress={updateBuyerAddress} 
+            setBuyerAddress={updateCurrentBuyerAddress} // For general updates
+            onLookupBuyerByGSTIN={lookupAndSetBuyerAddress} // For GSTIN specific lookup
           />
         )}
       </main>
