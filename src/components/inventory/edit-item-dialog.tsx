@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
-import { Sparkles, Loader2, Save } from 'lucide-react';
+import { Sparkles, Loader2, Save, CalendarDays } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { generateItemDescription } from '@/ai/flows/enrich-item-description';
 
@@ -23,9 +23,10 @@ export default function EditItemDialog({ isOpen, onOpenChange, itemToEdit, onUpd
   const [category, setCategory] = useState('');
   const [itemName, setItemName] = useState('');
   const [buyingPrice, setBuyingPrice] = useState('');
-  const [sellingPrice, setSellingPrice] = useState(''); // 'price' in InventoryItem is selling price
+  const [sellingPrice, setSellingPrice] = useState('');
   const [stock, setStock] = useState('');
   const [description, setDescription] = useState('');
+  const [purchaseDate, setPurchaseDate] = useState('');
   const [isEnriching, setIsEnriching] = useState(false);
   const { toast } = useToast();
 
@@ -34,16 +35,17 @@ export default function EditItemDialog({ isOpen, onOpenChange, itemToEdit, onUpd
       setCategory(itemToEdit.category);
       setItemName(itemToEdit.name);
       setBuyingPrice(itemToEdit.buyingPrice.toString());
-      setSellingPrice(itemToEdit.price.toString()); // itemToEdit.price is selling price
+      setSellingPrice(itemToEdit.price.toString());
       setStock(itemToEdit.stock.toString());
       setDescription(itemToEdit.description || '');
+      setPurchaseDate(itemToEdit.purchaseDate || new Date().toLocaleDateString('en-CA'));
     }
   }, [itemToEdit]);
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!category || !itemName || !buyingPrice || !sellingPrice || !stock || !itemToEdit) {
-      toast({ title: "Error", description: "Please fill all required fields.", variant: "destructive" });
+    if (!category || !itemName || !buyingPrice || !sellingPrice || !stock || !itemToEdit || !purchaseDate) {
+      toast({ title: "Error", description: "Please fill all required fields, including Purchase Date.", variant: "destructive" });
       return;
     }
 
@@ -61,9 +63,10 @@ export default function EditItemDialog({ isOpen, onOpenChange, itemToEdit, onUpd
       category,
       name: itemName,
       buyingPrice: numBuyingPrice,
-      price: numSellingPrice, // 'price' in InventoryItem is selling price
+      price: numSellingPrice,
       stock: numStock,
       description: description,
+      purchaseDate: purchaseDate,
     });
     toast({ title: "Success", description: `${itemName} updated successfully.` });
     onOpenChange(false);
@@ -76,7 +79,7 @@ export default function EditItemDialog({ isOpen, onOpenChange, itemToEdit, onUpd
     }
     setIsEnriching(true);
     try {
-      const numPrice = parseFloat(sellingPrice); // Use selling price for description context
+      const numPrice = parseFloat(sellingPrice); 
        if (isNaN(numPrice) || numPrice <=0) {
          toast({ title: "Error", description: "Please enter a valid selling price.", variant: "destructive" });
          setIsEnriching(false);
@@ -121,6 +124,13 @@ export default function EditItemDialog({ isOpen, onOpenChange, itemToEdit, onUpd
             <div>
               <Label htmlFor="edit-stock">Stock Quantity</Label>
               <Input id="edit-stock" type="number" value={stock} onChange={(e) => setStock(e.target.value)} />
+            </div>
+            <div>
+              <Label htmlFor="edit-purchaseDate" className="flex items-center">
+                <CalendarDays className="mr-2 h-4 w-4 text-muted-foreground" />
+                Purchase Date
+              </Label>
+              <Input id="edit-purchaseDate" type="date" value={purchaseDate} onChange={(e) => setPurchaseDate(e.target.value)} />
             </div>
           </div>
           <div className="space-y-2">

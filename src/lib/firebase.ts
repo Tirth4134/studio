@@ -1,7 +1,7 @@
 
 import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
 import { getFirestore, collection, doc, getDoc, setDoc, getDocs, writeBatch, deleteDoc } from "firebase/firestore";
-import { getAuth, signInWithEmailAndPassword, onAuthStateChanged } from "firebase/auth";
+import { getAuth } from "firebase/auth"; // Added getAuth
 import type { InventoryItem, BuyerAddress, BuyerProfile, AppSettings as AppSettingsType } from '@/types';
 
 // Firebase configuration - Updated with user-provided values
@@ -9,7 +9,7 @@ const firebaseConfig = {
   apiKey: "AIzaSyBFkOKPJM9N0aoP5pVYkIV30DFjTHTEiGo",
   authDomain: "invoiceflow-kyl1w.firebaseapp.com",
   projectId: "invoiceflow-kyl1w",
-  storageBucket: "invoiceflow-kyl1w.appspot.com", // Corrected .firebasestorage.app to .appspot.com if that was a typo, or ensure it matches your console. Firebase typically uses .appspot.com for storageBucket.
+  storageBucket: "invoiceflow-kyl1w.appspot.com", // Corrected to .appspot.com as it's more typical
   messagingSenderId: "1040042171668",
   appId: "1:1040042171668:web:5326322aceada82f167601"
 };
@@ -25,29 +25,13 @@ if (!getApps().length) {
 }
 
 const db = getFirestore(app);
-const auth = getAuth(app);
+const auth = getAuth(app); // Initialize Firebase Auth
 
 // Firestore collection references
 const inventoryCollectionRef = collection(db, "inventory");
 const settingsDocRef = doc(db, "settings", "appState");
 const buyerProfilesCollectionRef = collection(db, "buyerProfiles");
 
-// --- Authentication Functions ---
-export const loginUser = async (email: string, password: string): Promise<void> => {
-  try {
-    await signInWithEmailAndPassword(auth, email, password);
-    console.log("User logged in successfully");
-  } catch (error) {
-    console.error("Login failed:", error);
-    throw error;
-  }
-};
-
-export const monitorAuthState = (callback: (user: any) => void) => {
-  return onAuthStateChanged(auth, (user) => {
-    callback(user);
-  });
-};
 
 // --- Inventory Functions ---
 export const getInventoryFromFirestore = async (): Promise<InventoryItem[]> => {
@@ -80,14 +64,20 @@ export const saveInventoryItemToFirestore = async (item: InventoryItem): Promise
     const itemDocPath = `inventory/${item.id}`;
     console.log(`Attempting to save single item to Firestore. Path: ${itemDocPath}`, "Data:", item);
     const itemDocRef = doc(db, "inventory", item.id);
-    await setDoc(itemDocRef, {
+    
+    const dataToSave: any = { // Using 'any' for flexibility, ensure types match InventoryItem
       category: item.category,
       name: item.name,
       buyingPrice: item.buyingPrice,
       price: item.price,
       stock: item.stock,
       description: item.description || ''
-    });
+    };
+    if (item.purchaseDate) {
+      dataToSave.purchaseDate = item.purchaseDate;
+    }
+
+    await setDoc(itemDocRef, dataToSave);
     console.log("Single item saved successfully to Firestore with ID:", item.id);
   } catch (error) {
     console.error(`Error saving single inventory item (ID: ${item.id}) to Firestore:`, error);
@@ -121,14 +111,20 @@ export const saveMultipleInventoryItemsToFirestore = async (items: InventoryItem
         return; 
       }
       const itemDocRef = doc(db, "inventory", item.id);
-      batch.set(itemDocRef, {
+      
+      const itemData: any = { // Using 'any' for flexibility
         category: item.category,
         name: item.name,
         buyingPrice: item.buyingPrice,
         price: item.price,
         stock: item.stock,
         description: item.description || ''
-      });
+      };
+      if (item.purchaseDate) {
+        itemData.purchaseDate = item.purchaseDate;
+      }
+
+      batch.set(itemDocRef, itemData);
       validItemsInBatchCount++;
       console.log(`Added item ID ${item.id} ('${item.name}') to batch.`);
     });

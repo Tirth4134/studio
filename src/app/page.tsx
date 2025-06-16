@@ -22,11 +22,13 @@ import {
   getBuyerProfileByGSTIN
 } from '@/lib/firebase';
 
+const todayForSeed = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD
+
 const initialInventoryForSeed: InventoryItem[] = [
-  { id: generateUniqueId(), category: "Mobile", name: "iPhone 15 Pro", buyingPrice: 800, price: 999.99, stock: 10, description: "The latest iPhone with Pro features." },
-  { id: generateUniqueId(), category: "Mobile", name: "Samsung Galaxy S24 Ultra", buyingPrice: 950, price: 1199.99, stock: 15, description: "Flagship Android phone from Samsung." },
-  { id: generateUniqueId(), category: "Laptop", name: "MacBook Air M3", buyingPrice: 900, price: 1099.00, stock: 8, description: "Thin and light laptop with Apple's M3 chip." },
-  { id: generateUniqueId(), category: "Accessories", name: "Wireless Charger", buyingPrice: 25, price: 49.99, stock: 25, description: "Qi-certified wireless charging pad." },
+  { id: generateUniqueId(), category: "Mobile", name: "iPhone 15 Pro", buyingPrice: 800, price: 999.99, stock: 10, description: "The latest iPhone with Pro features.", purchaseDate: todayForSeed },
+  { id: generateUniqueId(), category: "Mobile", name: "Samsung Galaxy S24 Ultra", buyingPrice: 950, price: 1199.99, stock: 15, description: "Flagship Android phone from Samsung.", purchaseDate: todayForSeed },
+  { id: generateUniqueId(), category: "Laptop", name: "MacBook Air M3", buyingPrice: 900, price: 1099.00, stock: 8, description: "Thin and light laptop with Apple's M3 chip.", purchaseDate: todayForSeed },
+  { id: generateUniqueId(), category: "Accessories", name: "Wireless Charger", buyingPrice: 25, price: 49.99, stock: 25, description: "Qi-certified wireless charging pad.", purchaseDate: todayForSeed },
 ];
 
 const initialBuyerAddressGlobal: BuyerAddress = {
@@ -62,10 +64,13 @@ export default function HomePage() {
   useEffect(() => {
     if (isClient) {
       const fetchData = async () => {
-        setIsLoading(true); // Set loading true at the start of fetch
+        console.log("HomePage: fetchData triggered");
+        setIsLoading(true); 
         try {
           const firestoreInventory = await getInventoryFromFirestore();
+          console.log("HomePage: Fetched inventory from Firestore:", firestoreInventory);
           const appSettings = await getAppSettingsFromFirestore(initialBuyerAddressGlobal);
+          console.log("HomePage: Fetched app settings from Firestore:", appSettings);
 
           if (firestoreInventory.length === 0 && appSettings.invoiceCounter === 1 && appSettings.buyerAddress.name === initialBuyerAddressGlobal.name) {
             toast({
@@ -74,12 +79,14 @@ export default function HomePage() {
                 variant: "default",
                 duration: 5000,
             });
+            console.log("HomePage: Firestore is empty, seeding with initial data:", initialInventoryForSeed);
             await saveMultipleInventoryItemsToFirestore(initialInventoryForSeed);
             const initialSettingsToSave = {
                 invoiceCounter: 1,
                 buyerAddress: initialBuyerAddressGlobal
             };
             await saveAllAppSettingsToFirestore(initialSettingsToSave);
+            console.log("HomePage: Initial data seeded to Firestore.");
             
             setInventory(initialInventoryForSeed);
             setInvoiceCounter(initialSettingsToSave.invoiceCounter); 
@@ -102,7 +109,7 @@ export default function HomePage() {
             });
           }
         } catch (error: any) {
-            console.error("Error during initial data fetch or processing:", error);
+            console.error("HomePage: Error during initial data fetch or processing:", error);
             setInventory([]); 
             setInvoiceCounter(1); 
             setBuyerAddress(initialBuyerAddressGlobal); 
@@ -113,13 +120,14 @@ export default function HomePage() {
                 duration: 7000
             });
         } finally {
-            setIsLoading(false); // CRITICAL: Ensure loading is set to false in all cases
+            setIsLoading(false); 
+            console.log("HomePage: fetchData finished, isLoading set to false.");
         }
       };
       fetchData();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isClient, toast]);
+  }, [isClient]); // Removed toast from dependencies as it's stable
 
   useEffect(() => {
     setCurrentInvoiceNumber(generateInvoiceNumber(invoiceCounter));
@@ -136,20 +144,23 @@ export default function HomePage() {
   };
   
   const updateInventory = async (newInventory: InventoryItem[] | ((prevState: InventoryItem[]) => InventoryItem[])) => {
+    console.log("HomePage: updateInventory called.");
     if (typeof newInventory === 'function') {
       setInventory(prevState => {
         const updatedState = newInventory(prevState);
+        console.log("HomePage: Inventory state updated (functional update). New state for save:", updatedState);
         saveMultipleInventoryItemsToFirestore(updatedState).catch(err => {
-          console.error("Failed to save updated inventory state to Firestore", err);
-          toast({ title: "Save Error", description: "Could not save inventory changes to the database.", variant: "destructive"});
+          console.error("HomePage: Failed to save updated inventory state to Firestore (functional update)", err);
+          toast({ title: "Database Save Error", description: `Could not save inventory changes to the database. ${err.message}`, variant: "destructive"});
         });
         return updatedState;
       });
     } else {
+      console.log("HomePage: Inventory state updated (direct set). New state for save:", newInventory);
       setInventory(newInventory);
       await saveMultipleInventoryItemsToFirestore(newInventory).catch(err => {
-          console.error("Failed to save inventory to Firestore", err);
-          toast({ title: "Save Error", description: "Could not save inventory to the database.", variant: "destructive"});
+          console.error("HomePage: Failed to save inventory to Firestore (direct set)", err);
+          toast({ title: "Database Save Error", description: `Could not save inventory to the database. ${err.message}`, variant: "destructive"});
       });
     }
   };
@@ -195,11 +206,10 @@ export default function HomePage() {
         toast({ title: "Buyer Found", description: `Details for ${profile.name} loaded.`, variant: "default" });
       } else {
         toast({ title: "Buyer Not Found", description: "No existing profile for this GSTIN. Please enter details manually.", variant: "default" });
-         // Optionally clear parts of buyerAddress or set to a new "empty" state if desired
         setBuyerAddress(prev => ({
-          ...initialBuyerAddressGlobal, // Reset to placeholder structure
-          gstin: gstin, // Keep the searched GSTIN
-          name: '', // Clear name and other fields for manual entry
+          ...initialBuyerAddressGlobal, 
+          gstin: gstin, 
+          name: '', 
           addressLine1: '',
           addressLine2: '',
           stateNameAndCode: '',
@@ -272,10 +282,12 @@ export default function HomePage() {
     const name = rawItem.name || rawItem.item_name || rawItem.itemName || rawItem['Item Name'];
     const category = rawItem.category || rawItem.Category;
     const sellingPrice = normalizePrice(rawItem.price || rawItem.Price || rawItem.sellingPrice);
-    const buyingPrice = normalizePrice(rawItem.buyingPrice || rawItem.costPrice || rawItem.cost_price || 0); // Default buyingPrice to 0 if not found
+    const buyingPrice = normalizePrice(rawItem.buyingPrice || rawItem.costPrice || rawItem.cost_price || 0);
     const stock = normalizeStock(rawItem.stock || rawItem.Stock);
     const description = rawItem.description || rawItem.Description || '';
-  
+    const purchaseDate = rawItem.purchaseDate || rawItem.purchase_date;
+
+
     if (!name || typeof name !== 'string' || name.trim() === '') return null;
     if (isNaN(sellingPrice) || sellingPrice < 0) return null;
     if (isNaN(buyingPrice) || buyingPrice < 0) return null; 
@@ -287,6 +299,10 @@ export default function HomePage() {
       finalId = generateUniqueId();
     }
     tempImportedItemIdsForThisBatch.add(finalId);
+
+    const validatedPurchaseDate = typeof purchaseDate === 'string' && purchaseDate.match(/^\d{4}-\d{2}-\d{2}$/) 
+                                 ? purchaseDate 
+                                 : new Date().toLocaleDateString('en-CA');
   
     return {
       id: finalId,
@@ -296,19 +312,16 @@ export default function HomePage() {
       price: sellingPrice,
       stock,
       description: typeof description === 'string' ? description.trim() : '',
+      purchaseDate: validatedPurchaseDate,
     };
   };
 
   const handleImportData = (files: FileList | null) => {
     const file = files?.[0];
     if (!file) {
-      // toast({ title: "Import Cancelled", description: "No file selected.", variant: "default" }); // Already handled by AppHeader
       return;
     }
     
-    // toast({ title: "DEBUG: handleImportData called in page.tsx", description: `File: ${file.name}`, variant: "default" });
-
-
     const MAX_FILE_SIZE_MB = 5;
     if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
       toast({ title: 'File Too Large', description: `Please select a file smaller than ${MAX_FILE_SIZE_MB}MB.`, variant: 'destructive' });
@@ -317,18 +330,14 @@ export default function HomePage() {
 
     const reader = new FileReader();
     reader.onload = async (e) => {
-      // toast({ title: "DEBUG: FileReader onload triggered.", variant: "default" });
       setIsLoading(true);
       try {
         const result = e.target?.result as string;
         if (!result) {
-          // toast({ title: "DEBUG: File content is empty.", variant: "destructive" });
           throw new Error("File content is empty or unreadable.");
         }
-        // toast({ title: "DEBUG: File content read.", variant: "default" });
         
         const parsedData = JSON.parse(result);
-        // toast({ title: "DEBUG: JSON parsed.", variant: "default" });
 
         let parsedItems: any[] = [];
         let importedInvoiceCounter: number | undefined = undefined;
@@ -361,7 +370,6 @@ export default function HomePage() {
           return;
         }
         
-        // toast({ title: "DEBUG: Preparing to set inventory.", variant: "default" });
         const currentFirestoreInventory = await getInventoryFromFirestore();
         const newInventoryState = [...currentFirestoreInventory];
         const currentInventoryItemIds = new Set(newInventoryState.map(item => item.id));
@@ -394,6 +402,7 @@ export default function HomePage() {
               buyingPrice: importedItem.buyingPrice, 
               price: importedItem.price, 
               description: importedItem.description,
+              purchaseDate: importedItem.purchaseDate || currentItem.purchaseDate, // Keep existing if new one not provided
             };
             updatedCount++;
           } else {
@@ -406,24 +415,17 @@ export default function HomePage() {
         
         await saveMultipleInventoryItemsToFirestore(newInventoryState);
         setInventory(newInventoryState); 
-        // toast({ title: "DEBUG: Inventory set.", variant: "default" });
 
         if (importedInvoiceCounter !== undefined) {
-          // toast({ title: "DEBUG: Preparing to set invoice counter.", variant: "default" });
           await saveInvoiceCounterToFirestore(importedInvoiceCounter);
           setInvoiceCounter(importedInvoiceCounter);
-          // toast({ title: "DEBUG: Invoice counter set.", variant: "default" });
         }
         if (importedBuyerAddress) {
-          // toast({ title: "DEBUG: Preparing to set buyer address.", variant: "default" });
           await saveBuyerAddressToAppSettings(importedBuyerAddress);
           setBuyerAddress(importedBuyerAddress);
-          // toast({ title: "DEBUG: Buyer address set.", variant: "default" });
         }
         
-        // toast({ title: "DEBUG: Preparing to clear current invoice items.", variant: "default" });
         setInvoiceItems([]); 
-        // toast({ title: "DEBUG: Current invoice items cleared.", variant: "default" });
 
         toast({ title: 'Import Complete', description: `Processed ${parsedItems.length} records. Settings updated.`, });
         setTimeout(() => {
@@ -534,4 +536,3 @@ export default function HomePage() {
     </div>
   );
 }
-

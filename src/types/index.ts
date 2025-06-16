@@ -13,10 +13,11 @@ export interface InventoryItem {
   id: string;
   category: string;
   name: string;
-  buyingPrice: number; // Added buying price
+  buyingPrice: number;
   price: number; // This is the selling price
   stock: number;
   description?: string;
+  purchaseDate?: string; // Added purchase date, YYYY-MM-DD
 }
 
 export interface InvoiceLineItem {

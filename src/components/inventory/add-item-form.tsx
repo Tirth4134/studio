@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { PlusCircle } from 'lucide-react';
+import { PlusCircle, CalendarDays } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 interface AddItemFormProps {
@@ -22,12 +22,13 @@ export default function AddItemForm({ onAddItem }: AddItemFormProps) {
   const [sellingPrice, setSellingPrice] = useState('');
   const [stock, setStock] = useState('');
   const [description, setDescription] = useState('');
+  const [purchaseDate, setPurchaseDate] = useState(new Date().toLocaleDateString('en-CA')); // Default to today
   const { toast } = useToast();
 
   const handleAddItem = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!category || !itemName || !buyingPrice || !sellingPrice || !stock) {
-      toast({ title: "Error", description: "Please fill all required fields correctly.", variant: "destructive" });
+    if (!category || !itemName || !buyingPrice || !sellingPrice || !stock || !purchaseDate) {
+      toast({ title: "Error", description: "Please fill all required fields correctly, including Purchase Date.", variant: "destructive" });
       return;
     }
     const numBuyingPrice = parseFloat(buyingPrice);
@@ -46,14 +47,16 @@ export default function AddItemForm({ onAddItem }: AddItemFormProps) {
       price: numSellingPrice, // 'price' field is used for selling price in InventoryItem
       stock: numStock,
       description: description,
+      purchaseDate: purchaseDate,
     });
 
-    // Keep category, clear other fields
+    // Keep category, clear other fields, reset purchaseDate to today
     setItemName('');
     setBuyingPrice('');
     setSellingPrice('');
     setStock('');
     setDescription('');
+    setPurchaseDate(new Date().toLocaleDateString('en-CA'));
   };
 
   return (
@@ -65,8 +68,8 @@ export default function AddItemForm({ onAddItem }: AddItemFormProps) {
       </CardHeader>
       <CardContent className="pt-6">
         <form onSubmit={handleAddItem} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            <div className="lg:col-span-1">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div>
               <Label htmlFor="category">Category</Label>
               <Input id="category" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="e.g. Mobile" />
             </div>
@@ -85,6 +88,13 @@ export default function AddItemForm({ onAddItem }: AddItemFormProps) {
             <div>
               <Label htmlFor="stock">Stock Quantity</Label>
               <Input id="stock" type="number" value={stock} onChange={(e) => setStock(e.target.value)} placeholder="0" />
+            </div>
+             <div className="md:col-span-1">
+              <Label htmlFor="purchaseDate" className="flex items-center">
+                <CalendarDays className="mr-2 h-4 w-4 text-muted-foreground" />
+                Purchase Date
+              </Label>
+              <Input id="purchaseDate" type="date" value={purchaseDate} onChange={(e) => setPurchaseDate(e.target.value)} />
             </div>
           </div>
            <div className="space-y-2">
