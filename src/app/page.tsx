@@ -62,13 +62,18 @@ export default function HomePage() {
   useEffect(() => {
     if (isClient) {
       const fetchData = async () => {
-        // setIsLoading(true); // isLoading is true by default, no need to set it again unless re-fetching
+        setIsLoading(true); // Set loading true at the start of fetch
         try {
           const firestoreInventory = await getInventoryFromFirestore();
           const appSettings = await getAppSettingsFromFirestore(initialBuyerAddressGlobal);
 
-          // Check if Firestore seems uninitialized (empty inventory AND default counter AND default buyer name)
           if (firestoreInventory.length === 0 && appSettings.invoiceCounter === 1 && appSettings.buyerAddress.name === initialBuyerAddressGlobal.name) {
+            toast({
+                title: "Initializing Database",
+                description: "No existing data found. Seeding with default data...",
+                variant: "default",
+                duration: 5000,
+            });
             await saveMultipleInventoryItemsToFirestore(initialInventoryForSeed);
             const initialSettingsToSave = {
                 invoiceCounter: 1,
@@ -83,34 +88,38 @@ export default function HomePage() {
                 title: "Application Initialized",
                 description: "Default data loaded into the database.",
                 variant: "default",
-                duration: 5000,
+                duration: 3000,
             });   
           } else {
             setInventory(firestoreInventory);
             setInvoiceCounter(appSettings.invoiceCounter);
             setBuyerAddress(appSettings.buyerAddress);
+             toast({
+                title: "Data Loaded",
+                description: "Successfully fetched data from Firestore.",
+                variant: "default",
+                duration: 3000,
+            });
           }
         } catch (error: any) {
             console.error("Error during initial data fetch or processing:", error);
-            // Fallback to local defaults if Firestore fetch fails.
-            // Consider if you want to seed initialInventoryForSeed here or just show an error with empty data.
-            setInventory([]); // Clears inventory on error to avoid showing stale or incorrect data
-            setInvoiceCounter(1); // Resets counter
-            setBuyerAddress(initialBuyerAddressGlobal); // Resets buyer address
+            setInventory([]); 
+            setInvoiceCounter(1); 
+            setBuyerAddress(initialBuyerAddressGlobal); 
             toast({
                 title: "Data Loading Error",
-                description: `Could not load data. Using defaults. Error: ${error.message || 'Unknown error'}`,
+                description: `Could not load data from Firestore. Using defaults. Error: ${error.message || 'Unknown error'}`,
                 variant: "destructive",
                 duration: 7000
             });
         } finally {
-            setIsLoading(false); // This is crucial: ensure loading is set to false in all cases
+            setIsLoading(false); // CRITICAL: Ensure loading is set to false in all cases
         }
       };
       fetchData();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isClient]); // Removed 'toast' from dependencies as it's stable and shouldn't trigger re-fetch.
+  }, [isClient, toast]);
 
   useEffect(() => {
     setCurrentInvoiceNumber(generateInvoiceNumber(invoiceCounter));
@@ -151,7 +160,7 @@ export default function HomePage() {
       return;
     }
 
-    if (buyerAddress.gstin && buyerAddress.gstin.trim() !== "") {
+    if (buyerAddress.gstin && buyerAddress.gstin.trim() !== "" && !buyerAddress.gstin.includes("(Placeholder)")) {
       try {
         await saveBuyerProfile(buyerAddress.gstin, buyerAddress);
         toast({ title: "Buyer Profile Saved", description: `Details for GSTIN ${buyerAddress.gstin} stored.`, variant: "default", duration: 3000});
@@ -160,7 +169,7 @@ export default function HomePage() {
         toast({ title: "Profile Save Error", description: `Could not save buyer profile. Error: ${(error as Error).message}`, variant: "destructive"});
       }
     } else {
-         toast({ title: "Info", description: `Buyer profile not saved as GSTIN is empty.`, variant: "default", duration: 3000});
+         toast({ title: "Info", description: `Buyer profile not saved: GSTIN is empty or placeholder.`, variant: "default", duration: 3000});
     }
 
     window.print();
@@ -168,7 +177,10 @@ export default function HomePage() {
   }, [invoiceItems.length, invoiceCounter, toast, buyerAddress]);
 
   const lookupAndSetBuyerAddress = async (gstin: string) => {
-    if (!gstin || gstin.trim() === "") return;
+    if (!gstin || gstin.trim() === "") {
+      toast({ title: "Info", description: "GSTIN cannot be empty for lookup.", variant: "default" });
+      return;
+    }
     setIsLoading(true);
     try {
       const profile = await getBuyerProfileByGSTIN(gstin);
@@ -183,6 +195,17 @@ export default function HomePage() {
         toast({ title: "Buyer Found", description: `Details for ${profile.name} loaded.`, variant: "default" });
       } else {
         toast({ title: "Buyer Not Found", description: "No existing profile for this GSTIN. Please enter details manually.", variant: "default" });
+         // Optionally clear parts of buyerAddress or set to a new "empty" state if desired
+        setBuyerAddress(prev => ({
+          ...initialBuyerAddressGlobal, // Reset to placeholder structure
+          gstin: gstin, // Keep the searched GSTIN
+          name: '', // Clear name and other fields for manual entry
+          addressLine1: '',
+          addressLine2: '',
+          stateNameAndCode: '',
+          contact: '',
+          email: ''
+        }));
       }
     } catch (error) {
       console.error("Error looking up buyer by GSTIN:", error);
@@ -249,7 +272,7 @@ export default function HomePage() {
     const name = rawItem.name || rawItem.item_name || rawItem.itemName || rawItem['Item Name'];
     const category = rawItem.category || rawItem.Category;
     const sellingPrice = normalizePrice(rawItem.price || rawItem.Price || rawItem.sellingPrice);
-    const buyingPrice = normalizePrice(rawItem.buyingPrice); 
+    const buyingPrice = normalizePrice(rawItem.buyingPrice || rawItem.costPrice || rawItem.cost_price || 0); // Default buyingPrice to 0 if not found
     const stock = normalizeStock(rawItem.stock || rawItem.Stock);
     const description = rawItem.description || rawItem.Description || '';
   
@@ -279,9 +302,12 @@ export default function HomePage() {
   const handleImportData = (files: FileList | null) => {
     const file = files?.[0];
     if (!file) {
-      toast({ title: "Import Cancelled", description: "No file selected.", variant: "default" });
+      // toast({ title: "Import Cancelled", description: "No file selected.", variant: "default" }); // Already handled by AppHeader
       return;
     }
+    
+    // toast({ title: "DEBUG: handleImportData called in page.tsx", description: `File: ${file.name}`, variant: "default" });
+
 
     const MAX_FILE_SIZE_MB = 5;
     if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
@@ -291,12 +317,18 @@ export default function HomePage() {
 
     const reader = new FileReader();
     reader.onload = async (e) => {
+      // toast({ title: "DEBUG: FileReader onload triggered.", variant: "default" });
       setIsLoading(true);
       try {
         const result = e.target?.result as string;
-        if (!result) throw new Error("File content is empty or unreadable.");
+        if (!result) {
+          // toast({ title: "DEBUG: File content is empty.", variant: "destructive" });
+          throw new Error("File content is empty or unreadable.");
+        }
+        // toast({ title: "DEBUG: File content read.", variant: "default" });
         
         const parsedData = JSON.parse(result);
+        // toast({ title: "DEBUG: JSON parsed.", variant: "default" });
 
         let parsedItems: any[] = [];
         let importedInvoiceCounter: number | undefined = undefined;
@@ -329,6 +361,7 @@ export default function HomePage() {
           return;
         }
         
+        // toast({ title: "DEBUG: Preparing to set inventory.", variant: "default" });
         const currentFirestoreInventory = await getInventoryFromFirestore();
         const newInventoryState = [...currentFirestoreInventory];
         const currentInventoryItemIds = new Set(newInventoryState.map(item => item.id));
@@ -373,17 +406,24 @@ export default function HomePage() {
         
         await saveMultipleInventoryItemsToFirestore(newInventoryState);
         setInventory(newInventoryState); 
+        // toast({ title: "DEBUG: Inventory set.", variant: "default" });
 
         if (importedInvoiceCounter !== undefined) {
+          // toast({ title: "DEBUG: Preparing to set invoice counter.", variant: "default" });
           await saveInvoiceCounterToFirestore(importedInvoiceCounter);
           setInvoiceCounter(importedInvoiceCounter);
+          // toast({ title: "DEBUG: Invoice counter set.", variant: "default" });
         }
         if (importedBuyerAddress) {
+          // toast({ title: "DEBUG: Preparing to set buyer address.", variant: "default" });
           await saveBuyerAddressToAppSettings(importedBuyerAddress);
           setBuyerAddress(importedBuyerAddress);
+          // toast({ title: "DEBUG: Buyer address set.", variant: "default" });
         }
         
+        // toast({ title: "DEBUG: Preparing to clear current invoice items.", variant: "default" });
         setInvoiceItems([]); 
+        // toast({ title: "DEBUG: Current invoice items cleared.", variant: "default" });
 
         toast({ title: 'Import Complete', description: `Processed ${parsedItems.length} records. Settings updated.`, });
         setTimeout(() => {
@@ -414,7 +454,7 @@ export default function HomePage() {
             inventoryUpdatesMap.set(invoiceItem.id, (inventoryUpdatesMap.get(invoiceItem.id) || 0) + invoiceItem.quantity);
         });
 
-        const currentInventory = await getInventoryFromFirestore(); // Get latest from Firestore
+        const currentInventory = await getInventoryFromFirestore();
         const updatedInventoryForFirestore = currentInventory.map(invItem => {
             if (inventoryUpdatesMap.has(invItem.id)) {
                 return { ...invItem, stock: invItem.stock + (inventoryUpdatesMap.get(invItem.id) || 0) };
@@ -423,14 +463,14 @@ export default function HomePage() {
         });
         
         await saveMultipleInventoryItemsToFirestore(updatedInventoryForFirestore);
-        setInventory(updatedInventoryForFirestore); // Update local state
+        setInventory(updatedInventoryForFirestore);
         
         setInvoiceItems([]); 
         toast({ title: "New Invoice", description: "Current invoice cleared and stock restored." });
     } else {
         toast({ title: "New Invoice", description: "Invoice is already empty.", variant: "default" });
     }
-  }, [invoiceItems, toast, setInventory]); // setInventory is now a dependency if its identity can change
+  }, [invoiceItems, toast, setInventory]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
