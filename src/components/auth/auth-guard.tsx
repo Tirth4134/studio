@@ -21,37 +21,50 @@ export default function AuthGuard({ children }: AuthGuardProps) {
   const { toast } = useToast();
 
   useEffect(() => {
+    console.log('[AuthGuard] useEffect: Subscribing to auth state');
     const unsubscribe = monitorAuthState((currentUser) => {
+      console.log('[AuthGuard] monitorAuthState callback. User:', currentUser);
       setUser(currentUser);
       setLoadingAuthState(false);
     });
-    return () => unsubscribe();
+    return () => {
+      console.log('[AuthGuard] useEffect cleanup: Unsubscribing from auth state');
+      unsubscribe();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
+    console.log('[AuthGuard] useEffect for routing logic. State:', { loadingAuthState, user: user?.email, pathname });
     if (loadingAuthState) {
-      return; // Don't do anything while auth state is loading
+      console.log('[AuthGuard] useEffect: Auth state still loading, returning.');
+      return; 
     }
 
     const isAdmin = user && user.email && ADMIN_EMAILS.includes(user.email);
+    console.log('[AuthGuard] useEffect: isAdmin:', isAdmin);
 
     if (!user) {
       // Not logged in
       if (pathname !== '/login') {
+        console.log('[AuthGuard] useEffect: No user, not on /login. Redirecting to /login.');
         router.push('/login');
+      } else {
+        console.log('[AuthGuard] useEffect: No user, already on /login.');
       }
     } else {
       // Logged in
       if (isAdmin) {
         if (pathname === '/login') {
-          router.push('/'); // Admin is on login page, redirect to home
+          console.log('[AuthGuard] useEffect: Admin on /login. Redirecting to /.');
+          router.push('/'); 
+        } else {
+          console.log('[AuthGuard] useEffect: Admin on protected page. Allowing access.');
         }
-        // Admin is logged in and not on login page, allow access (children will render)
       } else {
         // Logged in but NOT an admin
         if (pathname !== '/login') {
-          // To prevent an infinite loop if they were already on /login
-          // and ensure the toast is shown when redirected from a protected page
+          console.log('[AuthGuard] useEffect: Non-admin on protected page. Redirecting to /login with error.');
           toast({
             title: 'Access Denied',
             description: 'You do not have permission to access this page. Please login with an admin account.',
@@ -59,13 +72,17 @@ export default function AuthGuard({ children }: AuthGuardProps) {
             duration: 5000,
           });
           router.push('/login?error=unauthorized'); 
+        } else {
+           console.log('[AuthGuard] useEffect: Non-admin on /login. Allowing to stay.');
         }
-        // If they are a non-admin and already on /login, let them stay there (e.g. to try again)
       }
     }
   }, [user, loadingAuthState, pathname, router, toast]);
 
+  console.log('[AuthGuard] Render evaluation. State:', { loadingAuthState, user: user?.email, pathname });
+
   if (loadingAuthState) {
+    console.log('[AuthGuard] Rendering: Loading Spinner');
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-background">
         <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-primary"></div>
@@ -74,23 +91,22 @@ export default function AuthGuard({ children }: AuthGuardProps) {
     );
   }
 
-  // If user is loaded, not admin, and trying to access a protected route, 
-  // the useEffect above would have redirected.
-  // If on login page, or if admin on protected route, render children.
+  // If on the login page, always render it (AuthGuard's children for this path will be LoginPage)
   if (pathname === '/login') {
-    return <>{children}</>; // Render login page
+    console.log('[AuthGuard] Rendering: Login Page (/login path)');
+    return <>{children}</>; 
   }
   
-  // Check if user is admin before rendering protected children
+  // If user is an admin and not on the login page, render the protected content
   if (user && user.email && ADMIN_EMAILS.includes(user.email)) {
-    return <>{children}</>; // Render protected content for admin
+    console.log('[AuthGuard] Rendering: Protected Content for Admin (not /login path)');
+    return <>{children}</>; 
   }
   
-  // Fallback: if not loading, not on login, and not an admin (should have been redirected, but as safety)
-  // This will effectively show the loading spinner until redirection happens.
-  // Or, if already on login page and not admin, login page is rendered.
-  // If an unauthenticated user tries to access a protected page, they will be redirected.
-  return null; // Or a more specific loading/redirecting indicator
+  // Fallback: Should ideally be handled by redirects in useEffect.
+  // If this is rendered, it means the user is not authenticated or not an admin, and is not on the login page,
+  // and the redirect hasn't happened or completed yet.
+  console.log('[AuthGuard] Rendering: Fallback (null) - indicates potential issue or redirect in progress.');
+  return null;
 }
-
     
