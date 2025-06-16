@@ -1,17 +1,17 @@
 
 import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
 import { getFirestore, collection, doc, getDoc, setDoc, getDocs, writeBatch, deleteDoc } from "firebase/firestore";
-import { getAuth, signInWithEmailAndPassword, onAuthStateChanged } from "firebase/auth"; // Keep auth import
+import { getAuth, signInWithEmailAndPassword, onAuthStateChanged } from "firebase/auth";
 import type { InventoryItem, BuyerAddress, BuyerProfile, AppSettings as AppSettingsType } from '@/types';
 
-// Firebase configuration - CRITICAL: REPLACE WITH YOUR ACTUAL CONFIG FROM YOUR FIREBASE PROJECT
+// Firebase configuration - Updated with user-provided values
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY", // Replace
-  authDomain: "YOUR_AUTH_DOMAIN", // Replace
-  projectId: "YOUR_PROJECT_ID", // Replace - This MUST match your Firebase project ID
-  storageBucket: "YOUR_STORAGE_BUCKET", // Replace
-  messagingSenderId: "YOUR_MESSAGING_SENDER_ID", // Replace
-  appId: "YOUR_APP_ID" // Replace
+  apiKey: "AIzaSyBFkOKPJM9N0aoP5pVYkIV30DFjTHTEiGo",
+  authDomain: "invoiceflow-kyl1w.firebaseapp.com",
+  projectId: "invoiceflow-kyl1w",
+  storageBucket: "invoiceflow-kyl1w.appspot.com", // Corrected .firebasestorage.app to .appspot.com if that was a typo, or ensure it matches your console. Firebase typically uses .appspot.com for storageBucket.
+  messagingSenderId: "1040042171668",
+  appId: "1:1040042171668:web:5326322aceada82f167601"
 };
 
 // Initialize Firebase app
@@ -25,7 +25,7 @@ if (!getApps().length) {
 }
 
 const db = getFirestore(app);
-const auth = getAuth(app); // Initialize auth
+const auth = getAuth(app);
 
 // Firestore collection references
 const inventoryCollectionRef = collection(db, "inventory");
@@ -52,7 +52,6 @@ export const monitorAuthState = (callback: (user: any) => void) => {
 // --- Inventory Functions ---
 export const getInventoryFromFirestore = async (): Promise<InventoryItem[]> => {
   try {
-    // console.warn("Fetching inventory without logged-in user check.");
     console.log("Attempting to fetch inventory from Firestore collection path:", inventoryCollectionRef.path);
     const querySnapshot = await getDocs(inventoryCollectionRef);
     const items: InventoryItem[] = [];
@@ -69,7 +68,6 @@ export const getInventoryFromFirestore = async (): Promise<InventoryItem[]> => {
 
 export const saveInventoryItemToFirestore = async (item: InventoryItem): Promise<void> => {
   try {
-    // console.warn("Saving inventory item without logged-in user check.");
     if (!item.id || item.id.trim() === "") {
       console.error("Invalid or missing item ID for single save:", item);
       throw new Error("Invalid or missing item ID for single save operation.");
@@ -102,7 +100,7 @@ export const saveMultipleInventoryItemsToFirestore = async (items: InventoryItem
     console.error("Firestore database instance (db) is not initialized. Cannot save multiple items.");
     throw new Error("Database not initialized. Check Firebase configuration in firebase.ts.");
   }
-  // console.warn("Saving multiple inventory items without logged-in user check.");
+  
   console.log("saveMultipleInventoryItemsToFirestore received items for batch save:", items);
 
   if (!items || items.length === 0) {
@@ -116,11 +114,11 @@ export const saveMultipleInventoryItemsToFirestore = async (items: InventoryItem
     items.forEach(item => {
       if (!item.id || item.id.trim() === "") {
         console.error("Item missing ID during batch preparation, skipping this item:", item);
-        return; // Skip this invalid item
+        return; 
       }
        if (typeof item.category !== 'string' || typeof item.name !== 'string' || typeof item.buyingPrice !== 'number' || typeof item.price !== 'number' || typeof item.stock !== 'number') {
         console.error("Invalid item data types in batch preparation, skipping this item:", item);
-        return; // Skip this invalid item
+        return; 
       }
       const itemDocRef = doc(db, "inventory", item.id);
       batch.set(itemDocRef, {
@@ -145,15 +143,13 @@ export const saveMultipleInventoryItemsToFirestore = async (items: InventoryItem
     console.log(`BATCH COMMIT SUCCESSFUL: ${validItemsInBatchCount} items saved/updated in Firestore.`);
   } catch (error) {
     console.error("CRITICAL ERROR during batch.commit() in saveMultipleInventoryItemsToFirestore:", error);
-    // Log the full error object which might contain more details like error.code or error.message
     console.error("Full error object:", JSON.stringify(error, Object.getOwnPropertyNames(error)));
-    throw error; // Re-throw to be caught by caller in page.tsx
+    throw error; 
   }
 };
 
 export const deleteInventoryItemFromFirestore = async (itemId: string): Promise<void> => {
   try {
-    // console.warn("Deleting inventory item without logged-in user check.");
     console.log("Attempting to delete item from Firestore. Path:", `inventory/${itemId}`);
     const itemDocRef = doc(db, "inventory", itemId);
     await deleteDoc(itemDocRef);
@@ -167,7 +163,6 @@ export const deleteInventoryItemFromFirestore = async (itemId: string): Promise<
 // --- Settings Functions ---
 export const getAppSettingsFromFirestore = async (initialGlobalBuyerAddress: BuyerAddress): Promise<AppSettingsType> => {
   try {
-    // console.warn("Fetching app settings without logged-in user check.");
     console.log("Attempting to fetch app settings from Firestore. Path:", settingsDocRef.path);
     const docSnap = await getDoc(settingsDocRef);
     if (docSnap.exists()) {
@@ -208,7 +203,6 @@ export const getAppSettingsFromFirestore = async (initialGlobalBuyerAddress: Buy
 
 export const saveInvoiceCounterToFirestore = async (counter: number): Promise<void> => {
   try {
-    // console.warn("Saving invoice counter without logged-in user check.");
     console.log("Attempting to save invoice counter to Firestore. Path:", settingsDocRef.path, "Counter:", counter);
     await setDoc(settingsDocRef, { invoiceCounter: counter }, { merge: true });
     console.log("Invoice counter saved successfully to Firestore.");
@@ -220,7 +214,6 @@ export const saveInvoiceCounterToFirestore = async (counter: number): Promise<vo
 
 export const saveBuyerAddressToAppSettings = async (address: BuyerAddress): Promise<void> => {
   try {
-    // console.warn("Saving buyer address without logged-in user check.");
     const addressToSave = {
       ...address,
       email: address.email || ''
@@ -236,7 +229,6 @@ export const saveBuyerAddressToAppSettings = async (address: BuyerAddress): Prom
 
 export const saveAllAppSettingsToFirestore = async (settings: AppSettingsType): Promise<void> => {
   try {
-    // console.warn("Saving all app settings without logged-in user check.");
     const settingsToSave = {
       ...settings,
       buyerAddress: {
@@ -260,7 +252,6 @@ export const getBuyerProfileByGSTIN = async (gstin: string): Promise<BuyerProfil
     return null;
   }
   try {
-    // console.warn("Fetching buyer profile without logged-in user check.");
     const profileDocRef = doc(buyerProfilesCollectionRef, gstin);
     console.log("Attempting to fetch buyer profile from Firestore. Path:", profileDocRef.path);
     const docSnap = await getDoc(profileDocRef);
@@ -284,7 +275,6 @@ export const saveBuyerProfile = async (gstin: string, address: BuyerAddress): Pr
     return;
   }
   try {
-    // console.warn("Saving buyer profile without logged-in user check.");
     const profileDocRef = doc(buyerProfilesCollectionRef, gstin);
     const profileData: BuyerProfile = {
       name: address.name,
@@ -306,5 +296,3 @@ export const saveBuyerProfile = async (gstin: string, address: BuyerAddress): Pr
 };
 
 export { db, auth };
-
-    
