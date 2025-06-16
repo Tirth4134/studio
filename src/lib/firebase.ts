@@ -360,6 +360,6 @@ export const getSalesRecordsFromFirestore = async (): Promise<SalesRecord[]> => 
 };
 
 
-export { db, auth };
+export { db, auth, User };
 
     

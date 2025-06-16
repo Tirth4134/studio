@@ -7,7 +7,7 @@ import { monitorAuthState, type User } from '@/lib/firebase'; // Ensure User typ
 import { useToast } from '@/hooks/use-toast';
 
 // IMPORTANT: Replace this with your actual admin emails
-const ADMIN_EMAILS = ['admin@example.com', 'testadmin@example.com']; 
+const ADMIN_EMAILS = ['ptirthv4134@gmail.com', 'testadmin@example.com']; 
 
 interface AuthGuardProps {
   children: React.ReactNode;
