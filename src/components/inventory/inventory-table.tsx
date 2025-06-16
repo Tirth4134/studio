@@ -23,7 +23,7 @@ export default function InventoryTable({ items, onEditItem, onDeleteItem }: Inve
             <TableHead>Category</TableHead>
             <TableHead>Item Name</TableHead>
             <TableHead className="hidden md:table-cell">Description</TableHead>
-            <TableHead className="text-right">Price</TableHead>
+            <TableHead className="text-right">Selling Price</TableHead>
             <TableHead className="text-right">Stock</TableHead>
             <TableHead>Status</TableHead>
             <TableHead className="text-center">Actions</TableHead>
@@ -73,4 +73,3 @@ export default function InventoryTable({ items, onEditItem, onDeleteItem }: Inve
     </ScrollArea>
   );
 }
-
