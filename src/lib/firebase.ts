@@ -18,7 +18,7 @@ const firebaseConfig = {
   apiKey: "AIzaSyBFkOKPJM9N0aoP5pVYkIV30DFjTHTEiGo",
   authDomain: "invoiceflow-kyl1w.firebaseapp.com",
   projectId: "invoiceflow-kyl1w",
-  storageBucket: "invoiceflow-kyl1w.appspot.com", // Ensure this matches your Firebase console (often .appspot.com)
+  storageBucket: "invoiceflow-kyl1w.appspot.com", 
   messagingSenderId: "1040042171668",
   appId: "1:1040042171668:web:5326322aceada82f167601"
 };
@@ -186,7 +186,7 @@ export const getAppSettingsFromFirestore = async (initialGlobalBuyerAddress: Buy
   try {
     const docSnap = await getDoc(settingsDocRef);
     if (docSnap.exists()) {
-      const data = docSnap.data() as AppSettingsType;
+      const data = docSnap.data();
       const mergedBuyerAddress: BuyerAddress = {
         name: data.buyerAddress?.name || initialGlobalBuyerAddress.name,
         addressLine1: data.buyerAddress?.addressLine1 || initialGlobalBuyerAddress.addressLine1,
@@ -238,7 +238,7 @@ export const saveAllAppSettingsToFirestore = async (settings: AppSettingsType): 
     const settingsToSave = {
       ...settings,
       buyerAddress: {
-        ...(settings.buyerAddress || {}),
+        ...(settings.buyerAddress || {}), // Provide a default empty object if buyerAddress is undefined
         email: settings.buyerAddress?.email || ''
       }
     };
@@ -253,11 +253,11 @@ export const saveAllAppSettingsToFirestore = async (settings: AppSettingsType): 
 export const getBuyerProfileByGSTIN = async (gstin: string): Promise<BuyerProfile | null> => {
   if (!gstin || gstin.trim() === "") return null;
   try {
-    const profileDocRef = doc(buyerProfilesCollectionRef, gstin);
+    const profileDocRef = doc(buyerProfilesCollectionRef, gstin.trim().toUpperCase()); // Standardize GSTIN
     const docSnap = await getDoc(profileDocRef);
     if (docSnap.exists()) {
       const data = docSnap.data() as BuyerProfile;
-      return { ...data, email: data.email || '' };
+      return { ...data, email: data.email || '' }; // Ensure email is string
     }
     return null;
   } catch (error) {
@@ -269,13 +269,18 @@ export const getBuyerProfileByGSTIN = async (gstin: string): Promise<BuyerProfil
 export const saveBuyerProfile = async (gstin: string, address: BuyerAddress): Promise<void> => {
   if (!gstin || gstin.trim() === "") return;
   try {
-    const profileDocRef = doc(buyerProfilesCollectionRef, gstin);
+    const profileDocRef = doc(buyerProfilesCollectionRef, gstin.trim().toUpperCase()); // Standardize GSTIN
+    // Ensure all fields from BuyerAddress are present, with email being optional but defaulting to empty string
     const profileData: BuyerProfile = {
-      name: address.name, addressLine1: address.addressLine1, addressLine2: address.addressLine2,
-      gstin: address.gstin, stateNameAndCode: address.stateNameAndCode, contact: address.contact,
-      email: address.email || '',
+      name: address.name || '',
+      addressLine1: address.addressLine1 || '',
+      addressLine2: address.addressLine2 || '',
+      gstin: address.gstin.trim().toUpperCase(), // Save standardized GSTIN
+      stateNameAndCode: address.stateNameAndCode || '',
+      contact: address.contact || '',
+      email: address.email || '', // Ensure email is always a string
     };
-    await setDoc(profileDocRef, profileData);
+    await setDoc(profileDocRef, profileData, { merge: true }); // Use merge to update existing or create new
   } catch (error) {
     console.error(`Error saving buyer profile for GSTIN ${gstin} to Firestore:`, error);
     throw error;
@@ -317,4 +322,3 @@ export const getSalesRecordsFromFirestore = async (): Promise<SalesRecord[]> => 
 
 
 export { db, auth, User };
-

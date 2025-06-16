@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { ShoppingCart, PlusSquare, UserSquare2, Building2, Mail, Phone, Landmark, Hash, Search } from 'lucide-react';
+import { ShoppingCart, PlusSquare, UserSquare2, Building2, Mail, Phone, Landmark, Hash, Search, MapPin } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import type { Dispatch, SetStateAction } from 'react';
 
@@ -16,9 +16,30 @@ interface CreateInvoiceFormProps {
   inventory: InventoryItem[];
   onAddItemToInvoice: (item: InvoiceLineItem) => void;
   buyerAddress: BuyerAddress;
-  setBuyerAddress: (address: BuyerAddress | ((prevState: BuyerAddress) => BuyerAddress)) => void; // Allow functional updates
+  setBuyerAddress: (addressOrUpdater: BuyerAddress | ((prevState: BuyerAddress) => BuyerAddress)) => void;
   onLookupBuyerByGSTIN: (gstin: string) => Promise<void>;
 }
+
+// Helper SVG MapPin icon if not available or to ensure consistency
+const CustomMapPinIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="24"
+    height="24"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className="lucide lucide-map-pin"
+    {...props}
+  >
+    <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
+    <circle cx="12" cy="10" r="3" />
+  </svg>
+);
+
 
 export default function CreateInvoiceForm({ 
   inventory, 
@@ -30,7 +51,8 @@ export default function CreateInvoiceForm({
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [selectedItemId, setSelectedItemId] = useState<string>('');
   const [quantity, setQuantity] = useState<string>('1');
-  const [gstinForLookup, setGstinForLookup] = useState(buyerAddress.gstin || '');
+  // Local state for GSTIN input, buyerAddress prop is source of truth for display
+  const [currentGstinInput, setCurrentGstinInput] = useState(buyerAddress.gstin || '');
   const { toast } = useToast();
 
   const categories = useMemo(() => {
@@ -42,10 +64,11 @@ export default function CreateInvoiceForm({
     return inventory.filter((item) => item.category === selectedCategory && item.stock > 0);
   }, [inventory, selectedCategory]);
 
-  // Sync gstinForLookup with buyerAddress.gstin from props
+  // Effect to update local GSTIN input if buyerAddress prop changes from parent (e.g. after lookup)
   useEffect(() => {
-    setGstinForLookup(buyerAddress.gstin || '');
+    setCurrentGstinInput(buyerAddress.gstin || '');
   }, [buyerAddress.gstin]);
+
 
   const handleAddItem = (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,9 +88,10 @@ export default function CreateInvoiceForm({
     onAddItemToInvoice({
       id: item.id,
       name: item.name,
-      price: item.price, // This is selling price
+      price: item.price, 
       quantity: qty,
       total: item.price * qty,
+      category: item.category, // Pass category
     });
 
     if (item.stock - qty < 5 && item.stock - qty > 0) {
@@ -78,6 +102,7 @@ export default function CreateInvoiceForm({
 
     setSelectedItemId('');
     setQuantity('1');
+    // Category selection persists
   };
 
   useEffect(() => {
@@ -87,27 +112,26 @@ export default function CreateInvoiceForm({
   const handleAddressChange = (field: keyof BuyerAddress, value: string) => {
     setBuyerAddress(prev => ({ ...prev, [field]: value }));
     if (field === 'gstin') {
-      setGstinForLookup(value);
-    }
-  };
-
-  const handleGstinBlur = () => {
-    if (gstinForLookup && gstinForLookup.trim() !== "" && gstinForLookup !== buyerAddress.gstin) {
-       // Only lookup if gstinForLookup is different from current buyerAddress.gstin to avoid redundant lookups on field updates
-      onLookupBuyerByGSTIN(gstinForLookup.trim());
-    } else if (gstinForLookup && gstinForLookup.trim() !== "" && gstinForLookup === buyerAddress.gstin && !buyerAddress.name.includes("Placeholder")) {
-        // If gstin is same and name is not placeholder, means details are likely already loaded for this gstin
-        // No need to lookup again unless explicitly requested by a button.
-    } else if(gstinForLookup && gstinForLookup.trim() !== "") {
-        onLookupBuyerByGSTIN(gstinForLookup.trim());
+      setCurrentGstinInput(value); // Keep local input in sync
     }
   };
   
   const handleGstinLookupButtonClick = () => {
-    if (gstinForLookup && gstinForLookup.trim() !== "") {
-      onLookupBuyerByGSTIN(gstinForLookup.trim());
+    const gstinToLookup = currentGstinInput.trim().toUpperCase();
+    if (gstinToLookup) {
+      onLookupBuyerByGSTIN(gstinToLookup);
     } else {
       toast({ title: "Info", description: "Please enter a GSTIN to lookup.", variant: "default"});
+    }
+  };
+
+  // This function will be called when the GSTIN input loses focus
+  const handleGstinBlur = () => {
+    const gstinToLookup = currentGstinInput.trim().toUpperCase();
+    // Only trigger lookup if the input value is different from the current buyerAddress.gstin
+    // or if the current buyerAddress.name is still a placeholder (meaning no real data loaded yet for currentGstinInput)
+    if (gstinToLookup && (gstinToLookup !== buyerAddress.gstin.toUpperCase() || buyerAddress.name.includes("(Placeholder)"))) {
+      onLookupBuyerByGSTIN(gstinToLookup);
     }
   };
 
@@ -171,16 +195,16 @@ export default function CreateInvoiceForm({
               <div className="flex items-center gap-2">
                 <Input 
                   id="gstin" 
-                  value={gstinForLookup} 
-                  onChange={(e) => handleAddressChange('gstin', e.target.value)}
-                  onBlur={handleGstinBlur}
+                  value={currentGstinInput} 
+                  onChange={(e) => setCurrentGstinInput(e.target.value.toUpperCase())} // Update local state directly
+                  onBlur={handleGstinBlur} // Trigger lookup on blur
                   placeholder="Buyer's GSTIN (for auto-fill)" 
                 />
                 <Button type="button" variant="outline" size="icon" onClick={handleGstinLookupButtonClick} aria-label="Lookup GSTIN">
                   <Search className="h-4 w-4"/>
                 </Button>
               </div>
-              <p className="text-xs text-muted-foreground mt-1">Enter GSTIN and move out of the field or click search to auto-fill address if previously stored.</p>
+              <p className="text-xs text-muted-foreground mt-1">Enter GSTIN and click search or move out of field to auto-fill if stored.</p>
             </div>
             <div>
               <Label htmlFor="buyerName" className="flex items-center"><Building2 className="mr-2 h-4 w-4 text-muted-foreground" />Buyer Name</Label>
@@ -195,11 +219,11 @@ export default function CreateInvoiceForm({
               <Input id="addressLine1" value={buyerAddress.addressLine1} onChange={(e) => handleAddressChange('addressLine1', e.target.value)} placeholder="Street Address, P.O. Box" />
             </div>
             <div>
-              <Label htmlFor="addressLine2" className="flex items-center"><MapPin className="mr-2 h-4 w-4 text-muted-foreground" />Address Line 2 / City</Label>
+              <Label htmlFor="addressLine2" className="flex items-center"><CustomMapPinIcon className="mr-2 h-4 w-4 text-muted-foreground" />Address Line 2 / City</Label>
               <Input id="addressLine2" value={buyerAddress.addressLine2} onChange={(e) => handleAddressChange('addressLine2', e.target.value)} placeholder="Apartment, suite, unit, city" />
             </div>
              <div>
-              <Label htmlFor="stateNameAndCode" className="flex items-center"><MapPin className="mr-2 h-4 w-4 text-muted-foreground" />State Name, Code</Label>
+              <Label htmlFor="stateNameAndCode" className="flex items-center"><CustomMapPinIcon className="mr-2 h-4 w-4 text-muted-foreground" />State Name, Code</Label>
               <Input id="stateNameAndCode" value={buyerAddress.stateNameAndCode} onChange={(e) => handleAddressChange('stateNameAndCode', e.target.value)} placeholder="e.g., Gujarat, Code: 24" />
             </div>
             <div>
@@ -212,20 +236,3 @@ export default function CreateInvoiceForm({
     </Card>
   );
 }
-
-// Helper icon, as MapPin is not in Lucide by default
-const MapPin = (props: React.SVGProps<SVGSVGElement>) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    {...props}
-  >
-    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
-    <circle cx="12" cy="10" r="3" />
-  </svg>
-);

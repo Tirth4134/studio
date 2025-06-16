@@ -36,15 +36,14 @@ export interface AppData {
 }
 
 export interface AppSettings{
-  buyerAddress: any;
-  // printMode: boolean;
-  invoiceCounter: any;
-
+  buyerAddress: BuyerAddress; // Ensure this is BuyerAddress, not 'any'
+  invoiceCounter: number; // Ensure this is number, not 'any'
 }
 
 // Represents a buyer profile stored by GSTIN
 export interface BuyerProfile extends BuyerAddress {
   // GSTIN is the key, so it's implicitly part of the profile when retrieved
+  // email is optional, but ensure it's handled
 }
 
 export interface SalesRecord {

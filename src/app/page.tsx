@@ -6,7 +6,7 @@ import type { InventoryItem, InvoiceLineItem, AppData, BuyerAddress, SalesRecord
 import AppHeader from '@/components/layout/app-header';
 import InventorySection from '@/components/inventory/inventory-section';
 import InvoiceSection from '@/components/invoice/invoice-section';
-import ReportsSection from '@/components/reports/reports-section'; // New import
+import ReportsSection from '@/components/reports/reports-section'; 
 import ShortcutsDialog from '@/components/shortcuts-dialog';
 import { generateInvoiceNumber, generateUniqueId } from '@/lib/invoice-utils';
 import { useToast } from '@/hooks/use-toast';
@@ -19,8 +19,8 @@ import {
   saveInvoiceCounterToFirestore,
   saveBuyerAddressToAppSettings,
   saveAllAppSettingsToFirestore,
-  saveBuyerProfile,
-  getBuyerProfileByGSTIN,
+  saveBuyerProfile, // New import
+  getBuyerProfileByGSTIN, // New import
   saveSalesRecordsToFirestore 
 } from '@/lib/firebase';
 
@@ -55,7 +55,7 @@ export default function HomePage() {
   const [isShortcutsDialogOpen, setIsShortcutsDialogOpen] = useState(false);
   const { toast } = useToast();
   const [isClient, setIsClient] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true); // For general loading state
 
   useEffect(() => {
     setIsClient(true);
@@ -102,7 +102,7 @@ export default function HomePage() {
           } else {
             setInventory(firestoreInventory);
             setInvoiceCounter(appSettings.invoiceCounter);
-            setBuyerAddress(appSettings.buyerAddress);
+            setBuyerAddress(appSettings.buyerAddress); // Use buyer address from settings
              toast({
                 title: "Data Loaded",
                 description: "Successfully fetched data from Firestore.",
@@ -129,7 +129,7 @@ export default function HomePage() {
       fetchData();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isClient, toast]); // Added toast to dependency array as it's used inside
+  }, [isClient, toast]); 
 
   useEffect(() => {
     setCurrentInvoiceNumber(generateInvoiceNumber(invoiceCounter));
@@ -142,7 +142,7 @@ export default function HomePage() {
 
   const updateCurrentBuyerAddress = async (newAddress: BuyerAddress) => {
     setBuyerAddress(newAddress);
-    await saveBuyerAddressToAppSettings(newAddress);
+    await saveBuyerAddressToAppSettings(newAddress); // This saves it as the "default" for next new invoice
   };
   
   const updateInventory = async (newInventory: InventoryItem[] | ((prevState: InventoryItem[]) => InventoryItem[])) => {
@@ -153,7 +153,7 @@ export default function HomePage() {
       setInventory(prevState => {
         const updatedState = newInventory(prevState);
         finalInventoryToSave = updatedState;
-        console.log("HomePage: Inventory state updated (functional update). Items to save:", finalInventoryToSave.length, "Data:", finalInventoryToSave);
+        console.log("HomePage: Inventory state updated (functional update). Items to save:", finalInventoryToSave.length);
         saveMultipleInventoryItemsToFirestore(finalInventoryToSave).catch(err => {
           console.error("HomePage: Failed to save updated inventory state to Firestore (functional update)", err);
           toast({ title: "Database Save Error", description: `Could not save inventory changes to the database. ${(err as Error).message}`, variant: "destructive"});
@@ -163,7 +163,7 @@ export default function HomePage() {
     } else {
       console.log("HomePage: updateInventory called with a direct value.");
       finalInventoryToSave = newInventory;
-      console.log("HomePage: Inventory state updated (direct set). Items to save:", finalInventoryToSave.length, "Data:", finalInventoryToSave);
+      console.log("HomePage: Inventory state updated (direct set). Items to save:", finalInventoryToSave.length);
       setInventory(newInventory);
       await saveMultipleInventoryItemsToFirestore(finalInventoryToSave).catch(err => {
           console.error("HomePage: Failed to save inventory to Firestore (direct set)", err);
@@ -178,6 +178,7 @@ export default function HomePage() {
       return;
     }
 
+    // Save buyer profile if GSTIN is valid and not a placeholder
     if (buyerAddress.gstin && buyerAddress.gstin.trim() !== "" && !buyerAddress.gstin.includes("(Placeholder)")) {
       try {
         await saveBuyerProfile(buyerAddress.gstin, buyerAddress);
@@ -224,6 +225,11 @@ export default function HomePage() {
 
     window.print();
     updateInvoiceCounter(invoiceCounter + 1);
+    // Reset buyer address to global default for the *next* invoice, or keep if you want it to persist from the last saved default app setting.
+    // For now, let's reload the default app settings to get the buyer address, which might have been updated via saveBuyerAddressToAppSettings
+    getAppSettingsFromFirestore(initialBuyerAddressGlobal).then(settings => setBuyerAddress(settings.buyerAddress));
+
+
   }, [invoiceItems, inventory, currentInvoiceNumber, invoiceDate, invoiceCounter, toast, buyerAddress]);
 
   const lookupAndSetBuyerAddress = async (gstin: string) => {
@@ -235,20 +241,26 @@ export default function HomePage() {
     try {
       const profile = await getBuyerProfileByGSTIN(gstin);
       if (profile) {
+        // Ensure all fields from BuyerAddress are present, with email as an empty string if null/undefined
         const completeProfile: BuyerAddress = {
-            ...initialBuyerAddressGlobal, 
-            ...profile, 
-            email: profile.email || '', 
+            name: profile.name || '',
+            addressLine1: profile.addressLine1 || '',
+            addressLine2: profile.addressLine2 || '',
+            gstin: profile.gstin, // GSTIN from profile is the source of truth
+            stateNameAndCode: profile.stateNameAndCode || '',
+            contact: profile.contact || '',
+            email: profile.email || '', // Ensure email is a string
         };
         setBuyerAddress(completeProfile); 
-        await saveBuyerAddressToAppSettings(completeProfile); 
-        toast({ title: "Buyer Found", description: `Details for ${profile.name} loaded.`, variant: "default" });
+        await saveBuyerAddressToAppSettings(completeProfile); // Save as new default for current session
+        toast({ title: "Buyer Found", description: `Details for ${profile.name || 'Buyer'} loaded.`, variant: "default" });
       } else {
         toast({ title: "Buyer Not Found", description: "No existing profile for this GSTIN. Please enter details manually.", variant: "default" });
+        // Reset to a blank slate but keep the entered GSTIN
         setBuyerAddress(prev => ({
-          ...initialBuyerAddressGlobal, 
-          gstin: gstin, 
-          name: '', 
+          ...initialBuyerAddressGlobal, // Start with placeholders
+          gstin: gstin.trim().toUpperCase(), // Keep the entered GSTIN
+          name: '', // Clear other fields for manual entry
           addressLine1: '',
           addressLine2: '',
           stateNameAndCode: '',
@@ -390,11 +402,16 @@ export default function HomePage() {
           if (typeof parsedData.invoiceCounter === 'number') importedInvoiceCounter = parsedData.invoiceCounter;
           if (typeof parsedData.buyerAddress === 'object' && parsedData.buyerAddress !== null) {
              const ba = parsedData.buyerAddress;
+             // Check for essential buyer address fields
              if (ba.name && ba.addressLine1 && ba.gstin && ba.stateNameAndCode && ba.contact) {
                 importedBuyerAddress = {
-                    ...initialBuyerAddressGlobal, 
-                    ...ba, 
-                    email: ba.email || initialBuyerAddressGlobal.email || '',
+                    name: ba.name,
+                    addressLine1: ba.addressLine1,
+                    addressLine2: ba.addressLine2 || '', // Default if missing
+                    gstin: ba.gstin,
+                    stateNameAndCode: ba.stateNameAndCode,
+                    contact: ba.contact,
+                    email: ba.email || '', // Default if missing
                 };
              } else {
                 toast({ title: "Warning", description: "Buyer address in file is incomplete, skipping.", variant: "default"});
@@ -461,8 +478,8 @@ export default function HomePage() {
           setInvoiceCounter(importedInvoiceCounter);
         }
         if (importedBuyerAddress) {
-          await saveBuyerAddressToAppSettings(importedBuyerAddress);
-          setBuyerAddress(importedBuyerAddress);
+          await saveBuyerAddressToAppSettings(importedBuyerAddress); // This updates the 'default' buyer address in settings
+          setBuyerAddress(importedBuyerAddress); // Also update current buyerAddress state
         }
         
         setInvoiceItems([]); 
@@ -508,6 +525,8 @@ export default function HomePage() {
         setInventory(updatedInventoryForFirestore);
         
         setInvoiceItems([]); 
+        // Restore buyer address to the one stored in app settings (which is the last "default" or looked-up one)
+        getAppSettingsFromFirestore(initialBuyerAddressGlobal).then(settings => setBuyerAddress(settings.buyerAddress));
         toast({ title: "New Invoice", description: "Current invoice cleared and stock restored." });
     } else {
         toast({ title: "New Invoice", description: "Invoice is already empty.", variant: "default" });
@@ -565,8 +584,8 @@ export default function HomePage() {
             invoiceDate={invoiceDate}
             onPrintInvoice={handlePrintInvoice}
             buyerAddress={buyerAddress}
-            setBuyerAddress={updateCurrentBuyerAddress}
-            onLookupBuyerByGSTIN={lookupAndSetBuyerAddress}
+            setBuyerAddress={updateCurrentBuyerAddress} // This now updates the "default" address in settings
+            onLookupBuyerByGSTIN={lookupAndSetBuyerAddress} // Pass down the lookup function
           />
         )}
         {activeSection === 'reports' && (

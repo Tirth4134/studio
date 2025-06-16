@@ -6,19 +6,18 @@ import CreateInvoiceForm from './create-invoice-form';
 import InvoicePreview from './invoice-preview';
 import { useToast } from '@/hooks/use-toast';
 import type { Dispatch, SetStateAction } from 'react';
-// Removed unused Firestore imports from here as page.tsx handles them
 
 interface InvoiceSectionProps {
   inventory: InventoryItem[];
-  setInventory: (inventory: InventoryItem[] | ((prevState: InventoryItem[]) => InventoryItem[])) => Promise<void> | void;
+  setInventory: (inventoryOrUpdater: InventoryItem[] | ((prevState: InventoryItem[]) => InventoryItem[])) => Promise<void> | void;
   invoiceItems: InvoiceLineItem[];
   setInvoiceItems: Dispatch<SetStateAction<InvoiceLineItem[]>>;
   invoiceNumber: string;
   invoiceDate: string;
   onPrintInvoice: () => void;
   buyerAddress: BuyerAddress;
-  setBuyerAddress: (address: BuyerAddress | ((prevState: BuyerAddress) => BuyerAddress)) => Promise<void> | void; // Updated type for functional updates
-  onLookupBuyerByGSTIN: (gstin: string) => Promise<void>; // New prop for GSTIN lookup
+  setBuyerAddress: (addressOrUpdater: BuyerAddress | ((prevState: BuyerAddress) => BuyerAddress)) => Promise<void> | void;
+  onLookupBuyerByGSTIN: (gstin: string) => Promise<void>;
 }
 
 export default function InvoiceSection({
@@ -31,7 +30,7 @@ export default function InvoiceSection({
   onPrintInvoice,
   buyerAddress,
   setBuyerAddress,
-  onLookupBuyerByGSTIN, // New prop
+  onLookupBuyerByGSTIN,
 }: InvoiceSectionProps) {
   const { toast } = useToast();
 
@@ -52,7 +51,7 @@ export default function InvoiceSection({
         )
       );
     } else {
-      setInvoiceItems(prevItems => [...prevItems, { ...itemToAdd, category: inventoryItem?.category }]);
+      setInvoiceItems(prevItems => [...prevItems, { ...itemToAdd, category: inventoryItem?.category || '' }]);
     }
 
     if (inventoryItem) {
@@ -72,7 +71,6 @@ export default function InvoiceSection({
   };
 
   const handleRemoveItemFromInvoice = async (itemIdToRemove: string, quantityToReturn: number) => {
-    // const inventoryItem = inventory.find(inv => inv.id === itemIdToRemove); // This was for direct Firestore save, now handled by setInventory prop
     setInventory(prevInventory =>
       prevInventory.map(invItem =>
         invItem.id === itemIdToRemove ? { ...invItem, stock: invItem.stock + quantityToReturn } : invItem
@@ -93,17 +91,19 @@ export default function InvoiceSection({
         stockToRestore[item.id] = (stockToRestore[item.id] || 0) + item.quantity;
     });
 
-    const updatedInventory = inventory.map(invItem => {
+    // Using the functional update form of setInventory which is expected by page.tsx
+    setInventory(prevInventory => 
+      prevInventory.map(invItem => {
         if (stockToRestore[invItem.id]) {
             return { ...invItem, stock: invItem.stock + stockToRestore[invItem.id] };
         }
         return invItem;
-    });
+      })
+    );
     
-    await setInventory(updatedInventory); // Propagates to page.tsx which handles Firestore
-
     setInvoiceItems([]);
-    toast({ title: "Success", description: "Invoice cleared." });
+    // Buyer address reset/management is now primarily handled by page.tsx after print/clear actions
+    toast({ title: "Success", description: "Invoice cleared and stock restored." });
   };
 
   return (
@@ -112,8 +112,8 @@ export default function InvoiceSection({
         inventory={inventory}
         onAddItemToInvoice={handleAddItemToInvoice}
         buyerAddress={buyerAddress}
-        setBuyerAddress={setBuyerAddress}
-        onLookupBuyerByGSTIN={onLookupBuyerByGSTIN} // Pass down the lookup function
+        setBuyerAddress={setBuyerAddress} // Pass down the state setter
+        onLookupBuyerByGSTIN={onLookupBuyerByGSTIN}
       />
       <InvoicePreview
         invoiceItems={invoiceItems}
