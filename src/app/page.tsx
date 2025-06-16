@@ -21,7 +21,7 @@ import {
   saveAllAppSettingsToFirestore,
   saveBuyerProfile,
   getBuyerProfileByGSTIN,
-  saveSalesRecordsToFirestore // New import
+  saveSalesRecordsToFirestore 
 } from '@/lib/firebase';
 
 const todayForSeed = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD
@@ -49,7 +49,7 @@ export default function HomePage() {
   const [invoiceCounter, setInvoiceCounter] = useState<number>(1);
   const [buyerAddress, setBuyerAddress] = useState<BuyerAddress>(initialBuyerAddressGlobal);
   
-  const [activeSection, setActiveSection] = useState('inventory'); // Default to inventory
+  const [activeSection, setActiveSection] = useState('inventory'); 
   const [invoiceDate, setInvoiceDate] = useState('');
   const [currentInvoiceNumber, setCurrentInvoiceNumber] = useState('');
   const [isShortcutsDialogOpen, setIsShortcutsDialogOpen] = useState(false);
@@ -129,7 +129,7 @@ export default function HomePage() {
       fetchData();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isClient]);
+  }, [isClient, toast]); // Added toast to dependency array as it's used inside
 
   useEffect(() => {
     setCurrentInvoiceNumber(generateInvoiceNumber(invoiceCounter));
@@ -149,10 +149,11 @@ export default function HomePage() {
     console.log("HomePage: updateInventory called.");
     let finalInventoryToSave: InventoryItem[];
     if (typeof newInventory === 'function') {
+      console.log("HomePage: updateInventory called with a function.");
       setInventory(prevState => {
         const updatedState = newInventory(prevState);
         finalInventoryToSave = updatedState;
-        console.log("HomePage: Inventory state updated (functional update). New state for save:", updatedState);
+        console.log("HomePage: Inventory state updated (functional update). Items to save:", finalInventoryToSave.length, "Data:", finalInventoryToSave);
         saveMultipleInventoryItemsToFirestore(finalInventoryToSave).catch(err => {
           console.error("HomePage: Failed to save updated inventory state to Firestore (functional update)", err);
           toast({ title: "Database Save Error", description: `Could not save inventory changes to the database. ${(err as Error).message}`, variant: "destructive"});
@@ -160,8 +161,9 @@ export default function HomePage() {
         return updatedState;
       });
     } else {
+      console.log("HomePage: updateInventory called with a direct value.");
       finalInventoryToSave = newInventory;
-      console.log("HomePage: Inventory state updated (direct set). New state for save:", newInventory);
+      console.log("HomePage: Inventory state updated (direct set). Items to save:", finalInventoryToSave.length, "Data:", finalInventoryToSave);
       setInventory(newInventory);
       await saveMultipleInventoryItemsToFirestore(finalInventoryToSave).catch(err => {
           console.error("HomePage: Failed to save inventory to Firestore (direct set)", err);
@@ -176,7 +178,6 @@ export default function HomePage() {
       return;
     }
 
-    // Save Buyer Profile
     if (buyerAddress.gstin && buyerAddress.gstin.trim() !== "" && !buyerAddress.gstin.includes("(Placeholder)")) {
       try {
         await saveBuyerProfile(buyerAddress.gstin, buyerAddress);
@@ -189,14 +190,13 @@ export default function HomePage() {
          toast({ title: "Info", description: `Buyer profile not saved: GSTIN is empty or placeholder.`, variant: "default", duration: 3000});
     }
 
-    // Record Sales
     const salesRecordsToSave: SalesRecord[] = [];
     for (const invoiceItem of invoiceItems) {
       const inventoryItem = inventory.find(inv => inv.id === invoiceItem.id);
       if (inventoryItem) {
         const profit = (invoiceItem.price - inventoryItem.buyingPrice) * invoiceItem.quantity;
         salesRecordsToSave.push({
-          id: generateUniqueId(), // Generate a unique ID for each sales record document
+          id: generateUniqueId(), 
           invoiceNumber: currentInvoiceNumber,
           saleDate: invoiceDate,
           itemId: invoiceItem.id,
@@ -321,7 +321,7 @@ export default function HomePage() {
     const name = rawItem.name || rawItem.item_name || rawItem.itemName || rawItem['Item Name'];
     const category = rawItem.category || rawItem.Category;
     const sellingPrice = normalizePrice(rawItem.price || rawItem.Price || rawItem.sellingPrice);
-    const buyingPrice = normalizePrice(rawItem.buyingPrice || rawItem.costPrice || rawItem.cost_price || 0); // Default to 0 if not present
+    const buyingPrice = normalizePrice(rawItem.buyingPrice || rawItem.costPrice || rawItem.cost_price || 0); 
     const stock = normalizeStock(rawItem.stock || rawItem.Stock);
     const description = rawItem.description || rawItem.Description || '';
     const purchaseDate = rawItem.purchaseDate || rawItem.purchase_date;
@@ -329,7 +329,7 @@ export default function HomePage() {
 
     if (!name || typeof name !== 'string' || name.trim() === '') return null;
     if (isNaN(sellingPrice) || sellingPrice < 0) return null;
-    if (isNaN(buyingPrice) || buyingPrice < 0) return null; // Validate buying price
+    if (isNaN(buyingPrice) || buyingPrice < 0) return null; 
     if (isNaN(stock) || stock < 0) return null; 
     if (!category || typeof category !== 'string' || category.trim() === '') return null;
 
@@ -358,6 +358,7 @@ export default function HomePage() {
   const handleImportData = (files: FileList | null) => {
     const file = files?.[0];
     if (!file) {
+      toast({ title: "No File Selected", description: "Please select a JSON file to import.", variant: "default" });
       return;
     }
     
@@ -400,7 +401,7 @@ export default function HomePage() {
              }
           }
         } else {
-          throw new Error("Invalid JSON structure.");
+          throw new Error("Invalid JSON structure. Expected an array of items or an object with 'items', 'invoiceCounter', 'buyerAddress'.");
         }
 
         if (parsedItems.length === 0 && importedInvoiceCounter === undefined && importedBuyerAddress === undefined) {
@@ -522,7 +523,7 @@ export default function HomePage() {
       else if (ctrlOrCmd && event.key.toLowerCase() === 'n') { event.preventDefault(); clearCurrentInvoice(); }
       else if (ctrlOrCmd && event.key.toLowerCase() === 'i') { event.preventDefault(); setActiveSection('inventory'); }
       else if (ctrlOrCmd && event.key.toLowerCase() === 'b') { event.preventDefault(); setActiveSection('invoice'); }
-      else if (ctrlOrCmd && event.key.toLowerCase() === 'r') { event.preventDefault(); setActiveSection('reports'); } // Shortcut for reports
+      else if (ctrlOrCmd && event.key.toLowerCase() === 'r') { event.preventDefault(); setActiveSection('reports'); } 
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);

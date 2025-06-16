@@ -1,0 +1,47 @@
+[
+  {
+    "category": "Mobile",
+    "name": "iPhone 16",
+    "buyingPrice": 850,
+    "price": 1099.99,
+    "stock": 5,
+    "description": "The newest iPhone model.",
+    "purchaseDate": "2024-07-30"
+  },
+  {
+    "category": "Laptop",
+    "itemName": "MacBook Pro M4",
+    "costPrice": 1500,
+    "sellingPrice": 1999.00,
+    "Stock": 3,
+    "Description": "Powerful new MacBook Pro with M4 chip.",
+    "purchase_date": "2024-07-28"
+  },
+  {
+    "category": "Accessories",
+    "name": "Wireless Charger",
+    "buyingPrice": 25,
+    "price": 49.99,
+    "stock": 10,
+    "description": "Universal Qi-certified wireless charging pad."
+  },
+  {
+    "id": "custom-id-for-monitor",
+    "category": "Monitor",
+    "name": "4K UHD Monitor",
+    "buyingPrice": 300,
+    "price": 450.00,
+    "stock": 8,
+    "description": "27-inch 4K UHD IPS Monitor.",
+    "purchaseDate": "2024-07-25"
+  },
+  {
+    "category": "Tablet",
+    "name": "Galaxy Tab S9",
+    "buyingPrice": 600,
+    "price": 750.00,
+    "stock": 12,
+    "description": "Flagship Android tablet from Samsung.",
+    "purchaseDate": "2024-08-01"
+  }
+]
