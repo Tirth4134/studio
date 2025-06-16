@@ -6,9 +6,9 @@ import {
   signInWithEmailAndPassword, 
   signOut, 
   onAuthStateChanged,
-  GoogleAuthProvider, // Added
-  signInWithPopup,      // Added
-  sendPasswordResetEmail, // Added
+  GoogleAuthProvider,
+  signInWithPopup,
+  sendPasswordResetEmail,
   type User
 } from "firebase/auth";
 import type { InventoryItem, BuyerAddress, BuyerProfile, AppSettings as AppSettingsType, SalesRecord } from '@/types';
@@ -18,7 +18,7 @@ const firebaseConfig = {
   apiKey: "AIzaSyBFkOKPJM9N0aoP5pVYkIV30DFjTHTEiGo",
   authDomain: "invoiceflow-kyl1w.firebaseapp.com",
   projectId: "invoiceflow-kyl1w",
-  storageBucket: "invoiceflow-kyl1w.appspot.com", // Standard is .appspot.com, check your console if .firebasestorage.app is specifically listed for config
+  storageBucket: "invoiceflow-kyl1w.appspot.com", // Ensure this matches your Firebase console (often .appspot.com)
   messagingSenderId: "1040042171668",
   appId: "1:1040042171668:web:5326322aceada82f167601"
 };
@@ -38,46 +38,58 @@ const auth = getAuth(app);
 
 // --- Auth Functions ---
 export const loginUser = async (email: string, password: string):Promise<User> => {
+  console.log('[Firebase] Attempting loginUser for:', email);
   try {
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    console.log('[Firebase] loginUser successful for:', email);
     return userCredential.user;
   } catch (error) {
-    console.error("Error logging in:", error);
-    throw error; // Re-throw to be handled by the caller, which can set specific messages
+    console.error("[Firebase] Error in loginUser:", error);
+    throw error; 
   }
 };
 
 export const signInWithGoogle = async (): Promise<User> => {
+  console.log('[Firebase] Attempting signInWithGoogle.');
   const provider = new GoogleAuthProvider();
   try {
     const result = await signInWithPopup(auth, provider);
+    console.log('[Firebase] signInWithGoogle successful for:', result.user.email);
     return result.user;
   } catch (error) {
-    console.error("Error signing in with Google:", error);
+    console.error("[Firebase] Error in signInWithGoogle:", error);
     throw error;
   }
 };
 
 export const sendPasswordReset = async (email: string): Promise<void> => {
+  console.log('[Firebase] Attempting sendPasswordReset for:', email);
   try {
     await sendPasswordResetEmail(auth, email);
+    console.log('[Firebase] sendPasswordReset email sent for:', email);
   } catch (error) {
-    console.error("Error sending password reset email:", error);
+    console.error("[Firebase] Error in sendPasswordReset:", error);
     throw error;
   }
 };
 
 export const logoutUser = async (): Promise<void> => {
+  console.log('[Firebase] Attempting logoutUser.');
   try {
     await signOut(auth);
+    console.log('[Firebase] logoutUser successful.');
   } catch (error) {
-    console.error("Error logging out:", error);
+    console.error("[Firebase] Error in logoutUser:", error);
     throw error;
   }
 };
 
 export const monitorAuthState = (callback: (user: User | null) => void) => {
-  return onAuthStateChanged(auth, callback);
+  console.log('[Firebase] Subscribing to auth state changes (monitorAuthState).');
+  return onAuthStateChanged(auth, (user) => {
+    console.log('[Firebase] onAuthStateChanged triggered. User email:', user ? user.email : 'null');
+    callback(user);
+  });
 };
 
 
@@ -305,3 +317,4 @@ export const getSalesRecordsFromFirestore = async (): Promise<SalesRecord[]> => 
 
 
 export { db, auth, User };
+

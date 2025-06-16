@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect } from 'react'; // Added useEffect
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { loginUser, signInWithGoogle, sendPasswordReset } from '@/lib/firebase'; 
 import { useToast } from '@/hooks/use-toast';
-import { LogIn, Mail, KeyRound, Chrome } from 'lucide-react'; 
+import { LogIn, Mail, KeyRound, Chrome } from 'lucide-react';
 
 // Helper function to get specific error messages
 const getAuthErrorMessage = (errorCode: string): string => {
@@ -26,14 +26,20 @@ const getAuthErrorMessage = (errorCode: string): string => {
       return 'Too many login attempts. Please try again later or reset your password.';
     case 'auth/network-request-failed':
       return 'Network error. Please check your internet connection.';
+    case 'auth/popup-closed-by-user':
+      return 'Google Sign-In cancelled.';
+    case 'auth/cancelled-popup-request':
+    case 'auth/popup-blocked':
+        return 'Google Sign-In popup was blocked by the browser. Please allow popups for this site.';
     default:
+      console.warn('[getAuthErrorMessage] Unhandled error code:', errorCode);
       return 'Login failed. Please try again.';
   }
 };
 
 
 export default function LoginPage() {
-  console.log('[LoginPage] Component rendering or re-rendering.'); // Log when component renders
+  console.log('[LoginPage] Component rendering or re-rendering.');
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -47,9 +53,9 @@ export default function LoginPage() {
   const { toast } = useToast();
 
   useEffect(() => {
-    console.log('[LoginPage] Mounted.'); // Log when component mounts
+    console.log('[LoginPage] Mounted.');
     return () => {
-      console.log('[LoginPage] Unmounted.'); // Log when component unmounts
+      console.log('[LoginPage] Unmounted.');
     };
   }, []);
 
@@ -68,7 +74,7 @@ export default function LoginPage() {
       const errorMessage = getAuthErrorMessage(err.code);
       setError(errorMessage);
       toast({ title: 'Login Failed', description: errorMessage, variant: 'destructive' });
-      console.error('[LoginPage] Email/password login failed:', err);
+      console.error('[LoginPage] Email/password login failed:', err.code, err.message);
     } finally {
       setIsLoading(false);
     }
@@ -87,7 +93,7 @@ export default function LoginPage() {
       const errorMessage = getAuthErrorMessage(err.code);
       setError(errorMessage);
       toast({ title: 'Google Sign-In Failed', description: errorMessage, variant: 'destructive' });
-      console.error('[LoginPage] Google Sign-In failed:', err);
+      console.error('[LoginPage] Google Sign-In failed:', err.code, err.message);
     } finally {
       setIsGoogleLoading(false);
     }
@@ -109,15 +115,13 @@ export default function LoginPage() {
       setResetEmail('');
       console.log('[LoginPage] Password reset email sent successfully.');
     } catch (err: any) {
-      let specificError = 'Failed to send password reset email. Please try again.';
-      if (err.code === 'auth/invalid-email') {
-        specificError = 'The email address is not valid.';
-      } else if (err.code === 'auth/user-not-found') {
-        specificError = 'No user found with this email address.';
+      let specificError = getAuthErrorMessage(err.code);
+      if (specificError === 'Login failed. Please try again.') { // Default message not specific enough for reset
+        specificError = 'Failed to send password reset email. Please ensure the email is correct and try again.';
       }
       setError(specificError);
       toast({ title: 'Password Reset Failed', description: specificError, variant: 'destructive' });
-      console.error('[LoginPage] Password reset failed:', err);
+      console.error('[LoginPage] Password reset failed:', err.code, err.message);
     } finally {
       setIsResetLoading(false);
     }

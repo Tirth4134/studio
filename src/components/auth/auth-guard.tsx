@@ -32,7 +32,7 @@ export default function AuthGuard({ children }: AuthGuardProps) {
   useEffect(() => {
     console.log('[AuthGuard] useEffect: Subscribing to auth state');
     const unsubscribe = monitorAuthState((currentUser) => {
-      console.log('[AuthGuard] monitorAuthState callback. User:', currentUser ? currentUser.email : 'null');
+      // console.log('[AuthGuard] monitorAuthState callback. User:', currentUser ? currentUser.email : 'null');
       setUser(currentUser);
       setLoadingAuthState(false);
     });
@@ -41,10 +41,10 @@ export default function AuthGuard({ children }: AuthGuardProps) {
       unsubscribe();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // No dependencies, runs once on mount
+  }, []); 
 
   useEffect(() => {
-    console.log('[AuthGuard] useEffect for routing logic. State:', { loadingAuthState, user: user?.email, pathname });
+    console.log(`[AuthGuard] useEffect for routing logic. State: loadingAuthState=${loadingAuthState}, userEmail=${user?.email}, pathname=${pathname}`);
     if (loadingAuthState) {
       console.log('[AuthGuard] useEffect (routing): Auth state still loading, returning.');
       return; 
@@ -86,39 +86,38 @@ export default function AuthGuard({ children }: AuthGuardProps) {
         }
       }
     }
-  }, [user, loadingAuthState, pathname, router, toast]); // Dependencies for routing logic
+  }, [user, loadingAuthState, pathname, router, toast]);
 
-  console.log('[AuthGuard] Render evaluation. State:', { loadingAuthState, user: user?.email, pathname });
+  console.log(`[AuthGuard] Render evaluation. State: loadingAuthState=${loadingAuthState}, userEmail=${user?.email}, pathname=${pathname}`);
 
   if (loadingAuthState) {
     console.log('[AuthGuard] Rendering: Auth state loading spinner (Authenticating...).');
     return <AuthLoadingSpinner message="Authenticating..." />;
   }
 
-  // At this point, loadingAuthState is false. Auth state is resolved.
   const isAdmin = user && user.email && ADMIN_EMAILS.includes(user.email);
 
-  if (!user) { // User is not logged in
+  if (!user) { 
     if (pathname === '/login') {
       console.log('[AuthGuard] Rendering: No user, on /login. Rendering children (LoginPage).');
-      return <>{children}</>; // Render LoginPage
+      return <>{children}</>;
     } else {
       console.log('[AuthGuard] Rendering: No user, not on /login. Redirect should be in progress. Showing loading spinner (Redirecting to login...).');
       return <AuthLoadingSpinner message="Redirecting to login..." />;
     }
-  } else { // User is logged in
+  } else { 
     if (isAdmin) {
       if (pathname === '/login') {
         console.log('[AuthGuard] Rendering: Admin on /login. Redirect should be in progress to /. Showing loading spinner (Redirecting to dashboard...).');
         return <AuthLoadingSpinner message="Redirecting to dashboard..." />;
       } else {
         console.log('[AuthGuard] Rendering: Admin on protected page. Rendering children (Protected Content).');
-        return <>{children}</>; // Render protected content
+        return <>{children}</>; 
       }
-    } else { // Logged in, but NOT an admin
+    } else { 
       if (pathname === '/login') {
         console.log('[AuthGuard] Rendering: Non-admin on /login. Rendering children (LoginPage - likely after unauthorized redirect).');
-        return <>{children}</>; // Render LoginPage (e.g. to show error or allow re-login attempt)
+        return <>{children}</>; 
       } else {
         console.log('[AuthGuard] Rendering: Non-admin on protected page. Redirect should be in progress to /login. Showing loading spinner (Access Denied. Redirecting...).');
         return <AuthLoadingSpinner message="Access Denied. Redirecting..." />;
