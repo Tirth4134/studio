@@ -1,3 +1,4 @@
+
 "use client";
 
 import {
@@ -28,7 +29,8 @@ export default function ShortcutsDialog({ isOpen, onOpenChange }: ShortcutsDialo
             {`Ctrl + P / Cmd + P : Print Invoice
 Ctrl + N / Cmd + N : New Invoice (Clear Current)
 Ctrl + I / Cmd + I : Go to Inventory Section
-Ctrl + B / Cmd + B : Go to Invoice Builder Section`}
+Ctrl + B / Cmd + B : Go to Invoice Builder Section
+Ctrl + R / Cmd + R : Go to Reports Section`}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

@@ -1,15 +1,17 @@
 
 import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
 import { getFirestore, collection, doc, getDoc, setDoc, getDocs, writeBatch, deleteDoc } from "firebase/firestore";
-import { getAuth } from "firebase/auth"; // Added getAuth
-import type { InventoryItem, BuyerAddress, BuyerProfile, AppSettings as AppSettingsType } from '@/types';
+import { getAuth } from "firebase/auth";
+import type { InventoryItem, BuyerAddress, BuyerProfile, AppSettings as AppSettingsType, SalesRecord } from '@/types';
+import { generateUniqueId } from "./invoice-utils";
+
 
 // Firebase configuration - Updated with user-provided values
 const firebaseConfig = {
   apiKey: "AIzaSyBFkOKPJM9N0aoP5pVYkIV30DFjTHTEiGo",
   authDomain: "invoiceflow-kyl1w.firebaseapp.com",
   projectId: "invoiceflow-kyl1w",
-  storageBucket: "invoiceflow-kyl1w.appspot.com", // Corrected to .appspot.com as it's more typical
+  storageBucket: "invoiceflow-kyl1w.appspot.com",
   messagingSenderId: "1040042171668",
   appId: "1:1040042171668:web:5326322aceada82f167601"
 };
@@ -25,12 +27,13 @@ if (!getApps().length) {
 }
 
 const db = getFirestore(app);
-const auth = getAuth(app); // Initialize Firebase Auth
+const auth = getAuth(app);
 
 // Firestore collection references
 const inventoryCollectionRef = collection(db, "inventory");
 const settingsDocRef = doc(db, "settings", "appState");
 const buyerProfilesCollectionRef = collection(db, "buyerProfiles");
+const salesRecordsCollectionRef = collection(db, "salesRecords");
 
 
 // --- Inventory Functions ---
@@ -65,7 +68,7 @@ export const saveInventoryItemToFirestore = async (item: InventoryItem): Promise
     console.log(`Attempting to save single item to Firestore. Path: ${itemDocPath}`, "Data:", item);
     const itemDocRef = doc(db, "inventory", item.id);
     
-    const dataToSave: any = { // Using 'any' for flexibility, ensure types match InventoryItem
+    const dataToSave: any = { 
       category: item.category,
       name: item.name,
       buyingPrice: item.buyingPrice,
@@ -112,7 +115,7 @@ export const saveMultipleInventoryItemsToFirestore = async (items: InventoryItem
       }
       const itemDocRef = doc(db, "inventory", item.id);
       
-      const itemData: any = { // Using 'any' for flexibility
+      const itemData: any = { 
         category: item.category,
         name: item.name,
         buyingPrice: item.buyingPrice,
@@ -126,7 +129,6 @@ export const saveMultipleInventoryItemsToFirestore = async (items: InventoryItem
 
       batch.set(itemDocRef, itemData);
       validItemsInBatchCount++;
-      console.log(`Added item ID ${item.id} ('${item.name}') to batch.`);
     });
 
     if (validItemsInBatchCount === 0) {
@@ -137,7 +139,7 @@ export const saveMultipleInventoryItemsToFirestore = async (items: InventoryItem
     console.log(`Attempting to commit batch with ${validItemsInBatchCount} valid items to Firestore.`);
     await batch.commit();
     console.log(`BATCH COMMIT SUCCESSFUL: ${validItemsInBatchCount} items saved/updated in Firestore.`);
-  } catch (error) {
+  } catch (error: any) {
     console.error("CRITICAL ERROR during batch.commit() in saveMultipleInventoryItemsToFirestore:", error);
     console.error("Full error object:", JSON.stringify(error, Object.getOwnPropertyNames(error)));
     throw error; 
@@ -290,5 +292,47 @@ export const saveBuyerProfile = async (gstin: string, address: BuyerAddress): Pr
     throw error;
   }
 };
+
+
+// --- Sales Records Functions ---
+export const saveSalesRecordsToFirestore = async (salesRecords: SalesRecord[]): Promise<void> => {
+  if (!db) {
+    console.error("Firestore database instance (db) is not initialized. Cannot save sales records.");
+    throw new Error("Database not initialized.");
+  }
+  if (!salesRecords || salesRecords.length === 0) {
+    console.log("No sales records provided to save. Skipping Firestore write.");
+    return;
+  }
+
+  try {
+    const batch = writeBatch(db);
+    salesRecords.forEach(record => {
+      const recordDocRef = doc(salesRecordsCollectionRef, record.id); // Use the pre-generated unique ID for the doc
+      batch.set(recordDocRef, record);
+    });
+    console.log(`Attempting to commit batch with ${salesRecords.length} sales records to Firestore.`);
+    await batch.commit();
+    console.log(`BATCH COMMIT SUCCESSFUL: ${salesRecords.length} sales records saved to Firestore.`);
+  } catch (error: any) {
+    console.error("CRITICAL ERROR during batch.commit() in saveSalesRecordsToFirestore:", error);
+    throw error;
+  }
+};
+
+export const getSalesRecordsFromFirestore = async (): Promise<SalesRecord[]> => {
+  try {
+    const querySnapshot = await getDocs(salesRecordsCollectionRef);
+    const records: SalesRecord[] = [];
+    querySnapshot.forEach((docSnap) => {
+      records.push(docSnap.data() as SalesRecord); // ID is part of the document data now
+    });
+    return records;
+  } catch (error) {
+    console.error("Error fetching sales records from Firestore:", error);
+    throw error;
+  }
+};
+
 
 export { db, auth };

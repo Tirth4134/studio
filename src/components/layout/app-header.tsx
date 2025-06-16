@@ -11,7 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Store, Package, FileText, Printer, Settings, Download, Upload, Keyboard } from 'lucide-react';
+import { Store, Package, FileText, Printer, Settings, Download, Upload, Keyboard, BarChart3 } from 'lucide-react'; // Added BarChart3
 import { useToast } from '@/hooks/use-toast';
 
 interface AppHeaderProps {
@@ -19,7 +19,7 @@ interface AppHeaderProps {
   setActiveSection: Dispatch<SetStateAction<string>>;
   onPrint: () => void;
   onExportData: () => void;
-  onImportData: (files: FileList | null) => void; // Changed signature
+  onImportData: (files: FileList | null) => void;
   onShowShortcuts: () => void;
 }
 
@@ -39,16 +39,15 @@ export default function AppHeader({
   };
 
   const handleFileSelected = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFiles = event.target.files; // Get files first
+    const selectedFiles = event.target.files; 
     toast({
       title: "DEBUG: AppHeader",
       description: "File selected, onImportData prop is about to be called with file list.",
       variant: "default",
       duration: 5000,
     });
-    onImportData(selectedFiles); // Pass FileList directly
+    onImportData(selectedFiles); 
     
-    // Reset the input value *after* processing, so the same file can be selected again if needed.
     if (event.target) { 
         (event.target as HTMLInputElement).value = ''; 
     }
@@ -75,6 +74,13 @@ export default function AppHeader({
             className="text-primary-foreground hover:bg-primary/80"
           >
             <FileText className="mr-2 h-5 w-5" /> Create Invoice
+          </Button>
+          <Button
+            variant={activeSection === 'reports' ? "secondary" : "ghost"}
+            onClick={() => setActiveSection('reports')}
+            className="text-primary-foreground hover:bg-primary/80"
+          >
+            <BarChart3 className="mr-2 h-5 w-5" /> Reports
           </Button>
           <Button variant="ghost" onClick={onPrint} className="text-primary-foreground hover:bg-primary/80">
             <Printer className="mr-2 h-5 w-5" /> Print Invoice

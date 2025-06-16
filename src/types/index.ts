@@ -46,3 +46,16 @@ export interface AppSettings{
 export interface BuyerProfile extends BuyerAddress {
   // GSTIN is the key, so it's implicitly part of the profile when retrieved
 }
+
+export interface SalesRecord {
+  id: string; // Unique ID for the sales record document itself
+  invoiceNumber: string;
+  saleDate: string; // YYYY-MM-DD format
+  itemId: string;
+  itemName: string;
+  category: string;
+  quantitySold: number;
+  sellingPricePerUnit: number;
+  buyingPricePerUnit: number;
+  totalProfit: number;
+}
