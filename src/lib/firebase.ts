@@ -11,7 +11,7 @@ import {
   sendPasswordResetEmail,
   type User
 } from "firebase/auth";
-import type { InventoryItem, BuyerAddress, BuyerProfile, AppSettings as AppSettingsType, SalesRecord, Invoice } from '@/types';
+import type { InventoryItem, BuyerAddress, BuyerProfile, AppSettings as AppSettingsType, SalesRecord, Invoice, InvoiceLineItem } from '@/types';
 
 // Firebase configuration
 const firebaseConfig = {
@@ -105,8 +105,8 @@ export const getInventoryFromFirestore = async (): Promise<InventoryItem[]> => {
       items.push({ 
         id: docSnap.id, 
         ...data,
-        hsnSac: data.hsnSac || undefined, // Ensure optional fields are handled
-        gstRate: data.gstRate === undefined ? undefined : Number(data.gstRate) // Ensure gstRate is number or undefined
+        hsnSac: data.hsnSac || undefined, 
+        gstRate: data.gstRate === undefined ? undefined : Number(data.gstRate) 
       } as InventoryItem);
     });
     return items;
@@ -123,15 +123,17 @@ export const saveInventoryItemToFirestore = async (item: InventoryItem): Promise
       throw new Error("Invalid item data types for single save.");
     }
     const itemDocRef = doc(db, "inventory", item.id);
-    const dataToSave: Partial<InventoryItem> = { 
-      category: item.category, name: item.name, buyingPrice: item.buyingPrice, 
-      price: item.price, stock: item.stock, description: item.description || '',
+    const dataToSave: Omit<InventoryItem, 'id'> = { 
+      category: item.category, 
+      name: item.name, 
+      buyingPrice: item.buyingPrice, 
+      price: item.price, 
+      stock: item.stock, 
+      description: item.description || '',
       purchaseDate: item.purchaseDate || new Date().toLocaleDateString('en-CA'),
-      hsnSac: item.hsnSac || undefined,
-      gstRate: item.gstRate === undefined ? undefined : Number(item.gstRate),
+      hsnSac: item.hsnSac || '', // Ensure empty string if undefined
+      gstRate: item.gstRate === undefined ? 0 : Number(item.gstRate), // Ensure 0 if undefined
     };
-    // Remove undefined fields before saving to Firestore
-    Object.keys(dataToSave).forEach(key => dataToSave[key as keyof typeof dataToSave] === undefined && delete dataToSave[key as keyof typeof dataToSave]);
     await setDoc(itemDocRef, dataToSave);
   } catch (error) {
     console.error(`Error saving single inventory item (ID: ${item.id}) to Firestore:`, error);
@@ -153,14 +155,17 @@ export const saveMultipleInventoryItemsToFirestore = async (items: InventoryItem
       console.warn("Invalid item data types in batch prep, skipping:", item); return;
     }
     const itemDocRef = doc(db, "inventory", item.id);
-    const itemData: Partial<InventoryItem> = { 
-      category: item.category, name: item.name, buyingPrice: item.buyingPrice, 
-      price: item.price, stock: item.stock, description: item.description || '',
+    const itemData: Omit<InventoryItem, 'id'> = { 
+      category: item.category, 
+      name: item.name, 
+      buyingPrice: item.buyingPrice, 
+      price: item.price, 
+      stock: item.stock, 
+      description: item.description || '',
       purchaseDate: item.purchaseDate || new Date().toLocaleDateString('en-CA'),
-      hsnSac: item.hsnSac || undefined,
-      gstRate: item.gstRate === undefined ? undefined : Number(item.gstRate),
+      hsnSac: item.hsnSac || '', // Ensure empty string if undefined
+      gstRate: item.gstRate === undefined ? 0 : Number(item.gstRate), // Ensure 0 if undefined
     };
-    Object.keys(itemData).forEach(key => itemData[key as keyof typeof itemData] === undefined && delete itemData[key as keyof typeof itemData]);
     batch.set(itemDocRef, itemData);
     validItemsInBatchCount++;
   });
@@ -204,7 +209,7 @@ export const getAppSettingsFromFirestore = async (initialGlobalBuyerAddress: Buy
       const mergedBuyerAddress: BuyerAddress = {
         name: data.buyerAddress?.name || initialGlobalBuyerAddress.name,
         addressLine1: data.buyerAddress?.addressLine1 || initialGlobalBuyerAddress.addressLine1,
-        addressLine2: data.buyerAddress?.addressLine2 || initialGlobalBuyerAddress.addressLine2,
+        addressLine2: data.buyerAddress?.addressLine2 || initialGlobalBuyerAddress.addressLine2 || '',
         gstin: data.buyerAddress?.gstin || initialGlobalBuyerAddress.gstin,
         stateNameAndCode: data.buyerAddress?.stateNameAndCode || initialGlobalBuyerAddress.stateNameAndCode,
         contact: data.buyerAddress?.contact || initialGlobalBuyerAddress.contact,
@@ -217,7 +222,7 @@ export const getAppSettingsFromFirestore = async (initialGlobalBuyerAddress: Buy
     } else {
       const defaultSettings: AppSettingsType = {
         invoiceCounter: 1,
-        buyerAddress: {...initialGlobalBuyerAddress, email: initialGlobalBuyerAddress.email || ''},
+        buyerAddress: {...initialGlobalBuyerAddress, email: initialGlobalBuyerAddress.email || '', addressLine2: initialGlobalBuyerAddress.addressLine2 || ''},
       };
       await setDoc(settingsDocRef, defaultSettings);
       return defaultSettings;
@@ -239,7 +244,7 @@ export const saveInvoiceCounterToFirestore = async (counter: number): Promise<vo
 
 export const saveBuyerAddressToAppSettings = async (address: BuyerAddress): Promise<void> => {
   try {
-    const addressToSave = {...address, email: address.email || ''};
+    const addressToSave = {...address, email: address.email || '', addressLine2: address.addressLine2 || ''};
     await setDoc(settingsDocRef, { buyerAddress: addressToSave }, { merge: true });
   } catch (error) {
     console.error("Error saving buyer address to app settings in Firestore:", error);
@@ -253,7 +258,8 @@ export const saveAllAppSettingsToFirestore = async (settings: AppSettingsType): 
       ...settings,
       buyerAddress: {
         ...(settings.buyerAddress || {}), 
-        email: settings.buyerAddress?.email || ''
+        email: settings.buyerAddress?.email || '',
+        addressLine2: settings.buyerAddress?.addressLine2 || ''
       }
     };
     await setDoc(settingsDocRef, settingsToSave);
@@ -271,7 +277,7 @@ export const getBuyerProfileByGSTIN = async (gstin: string): Promise<BuyerProfil
     const docSnap = await getDoc(profileDocRef);
     if (docSnap.exists()) {
       const data = docSnap.data() as BuyerProfile;
-      return { ...data, email: data.email || '' }; 
+      return { ...data, email: data.email || '', addressLine2: data.addressLine2 || '' }; 
     }
     return null;
   } catch (error) {
@@ -294,7 +300,7 @@ export const getBuyerProfilesByName = async (nameQuery: string): Promise<BuyerPr
     const profiles: BuyerProfile[] = [];
     querySnapshot.forEach((docSnap) => {
       const data = docSnap.data() as BuyerProfile;
-      profiles.push({ ...data, email: data.email || '' });
+      profiles.push({ ...data, email: data.email || '', addressLine2: data.addressLine2 || '' });
     });
     return profiles;
   } catch (error) {
@@ -319,11 +325,11 @@ export const saveBuyerProfile = async (gstin: string, address: BuyerAddress): Pr
     const profileData: BuyerProfile = {
       name: address.name || '',
       addressLine1: address.addressLine1 || '',
-      addressLine2: address.addressLine2 || '',
+      addressLine2: address.addressLine2 || '', // Ensure empty string if undefined
       gstin: idToUse, 
       stateNameAndCode: address.stateNameAndCode || '',
       contact: address.contact || '',
-      email: address.email || '', 
+      email: address.email || '', // Ensure empty string if undefined
     };
     await setDoc(profileDocRef, profileData, { merge: true }); 
   } catch (error) {
@@ -371,18 +377,33 @@ export const saveInvoiceToFirestore = async (invoice: Invoice): Promise<void> =>
   console.log("Firebase: saveInvoiceToFirestore called with invoice number:", invoice.invoiceNumber);
   try {
     const invoiceDocRef = doc(invoicesCollectionRef, invoice.invoiceNumber);
-    // Ensure gstRate is saved correctly for items
-    const itemsToSave = invoice.items.map(item => ({
+    
+    // Sanitize line items
+    const itemsToSave: InvoiceLineItem[] = invoice.items.map(item => ({
       ...item,
-      gstRate: item.gstRate === undefined ? undefined : Number(item.gstRate)
+      hsnSac: item.hsnSac || '', // Ensure empty string if undefined
+      gstRate: item.gstRate === undefined || item.gstRate === null ? 0 : Number(item.gstRate), // Ensure 0 if undefined/null
     }));
-    const invoiceDataToSave = { ...invoice, items: itemsToSave };
-    console.log("Firebase: Data to save:", JSON.stringify(invoiceDataToSave, null, 2));
+
+    // Sanitize buyer address
+    const sanitizedBuyerAddress: BuyerAddress = {
+      ...invoice.buyerAddress,
+      addressLine2: invoice.buyerAddress.addressLine2 || '', // Ensure empty string
+      email: invoice.buyerAddress.email || '', // Ensure empty string
+    };
+    
+    const invoiceDataToSave: Invoice = { 
+      ...invoice, 
+      items: itemsToSave,
+      buyerAddress: sanitizedBuyerAddress
+    };
+
+    console.log("Firebase: Data to save (after sanitization):", JSON.stringify(invoiceDataToSave, null, 2));
     await setDoc(invoiceDocRef, invoiceDataToSave);
     console.log("Firebase: Invoice successfully saved to Firestore:", invoice.invoiceNumber);
   } catch (error) {
     console.error(`Firebase: Error saving invoice ${invoice.invoiceNumber} to Firestore:`, error);
-    throw error; // Re-throw to be caught by caller
+    throw error; 
   }
 };
 
@@ -396,22 +417,47 @@ export const getInvoicesFromFirestore = async (): Promise<Invoice[]> => {
       const data = docSnap.data();
       const items = (data.items || []).map((item: any) => ({
         ...item,
-        gstRate: item.gstRate === undefined ? undefined : Number(item.gstRate)
+        hsnSac: item.hsnSac || '',
+        gstRate: item.gstRate === undefined || item.gstRate === null ? 0 : Number(item.gstRate)
       }));
-      invoices.push({ ...data, items } as Invoice);
+      const buyerAddress = {
+        ...data.buyerAddress,
+        addressLine2: data.buyerAddress?.addressLine2 || '',
+        email: data.buyerAddress?.email || '',
+      };
+      invoices.push({ ...data, items, buyerAddress } as Invoice);
     });
     console.log(`Firebase: Fetched ${invoices.length} invoices.`);
     return invoices;
   } catch (error) {
     console.error("Firebase: Error fetching invoices from Firestore:", error);
-    return []; // Return empty on error to prevent app crash, error logged
+    return []; 
   }
 };
 
 export const updateInvoiceInFirestore = async (invoiceNumber: string, updates: Partial<Invoice>): Promise<void> => {
   try {
     const invoiceDocRef = doc(invoicesCollectionRef, invoiceNumber);
-    await setDoc(invoiceDocRef, updates, { merge: true });
+    const updatesToApply = { ...updates };
+
+    // If items are being updated, sanitize them
+    if (updates.items) {
+      updatesToApply.items = updates.items.map(item => ({
+        ...item,
+        hsnSac: item.hsnSac || '',
+        gstRate: item.gstRate === undefined || item.gstRate === null ? 0 : Number(item.gstRate),
+      }));
+    }
+    // If buyerAddress is being updated, sanitize it
+    if (updates.buyerAddress) {
+        updatesToApply.buyerAddress = {
+            ...updates.buyerAddress,
+            addressLine2: updates.buyerAddress.addressLine2 || '',
+            email: updates.buyerAddress.email || '',
+        };
+    }
+
+    await setDoc(invoiceDocRef, updatesToApply, { merge: true });
   } catch (error) {
     console.error(`Error updating invoice ${invoiceNumber} in Firestore:`, error);
     throw error;
