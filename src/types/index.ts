@@ -30,7 +30,6 @@ export interface InvoiceLineItem {
   total: number; // This is (price * quantity), the taxable value for this line item
   hsnSac?: string;
   gstRate?: number; // Store as percentage, e.g., 18 for 18%
-  // category is implicitly available from the inventory item if needed, but hsnSac is more specific for tax
 }
 
 export interface AppData {
@@ -75,4 +74,6 @@ export interface Invoice {
   grandTotal: number; // subTotal + taxAmount
   amountPaid: number;
   status: 'Unpaid' | 'Partially Paid' | 'Paid' | 'Cancelled';
+  latestPaymentDate?: string; // YYYY-MM-DD format for the last payment update
 }
+

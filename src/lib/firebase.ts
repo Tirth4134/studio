@@ -105,8 +105,10 @@ export const getInventoryFromFirestore = async (): Promise<InventoryItem[]> => {
       items.push({ 
         id: docSnap.id, 
         ...data,
-        hsnSac: data.hsnSac || undefined, 
-        gstRate: data.gstRate === undefined ? undefined : Number(data.gstRate) 
+        description: data.description || '',
+        purchaseDate: data.purchaseDate || new Date().toLocaleDateString('en-CA'),
+        hsnSac: data.hsnSac || '', 
+        gstRate: data.gstRate === undefined || data.gstRate === null ? 0 : Number(data.gstRate) 
       } as InventoryItem);
     });
     return items;
@@ -131,8 +133,8 @@ export const saveInventoryItemToFirestore = async (item: InventoryItem): Promise
       stock: item.stock, 
       description: item.description || '',
       purchaseDate: item.purchaseDate || new Date().toLocaleDateString('en-CA'),
-      hsnSac: item.hsnSac || '', // Ensure empty string if undefined
-      gstRate: item.gstRate === undefined ? 0 : Number(item.gstRate), // Ensure 0 if undefined
+      hsnSac: item.hsnSac || '', 
+      gstRate: item.gstRate === undefined || item.gstRate === null ? 0 : Number(item.gstRate),
     };
     await setDoc(itemDocRef, dataToSave);
   } catch (error) {
@@ -163,8 +165,8 @@ export const saveMultipleInventoryItemsToFirestore = async (items: InventoryItem
       stock: item.stock, 
       description: item.description || '',
       purchaseDate: item.purchaseDate || new Date().toLocaleDateString('en-CA'),
-      hsnSac: item.hsnSac || '', // Ensure empty string if undefined
-      gstRate: item.gstRate === undefined ? 0 : Number(item.gstRate), // Ensure 0 if undefined
+      hsnSac: item.hsnSac || '', 
+      gstRate: item.gstRate === undefined || item.gstRate === null ? 0 : Number(item.gstRate),
     };
     batch.set(itemDocRef, itemData);
     validItemsInBatchCount++;
@@ -325,11 +327,11 @@ export const saveBuyerProfile = async (gstin: string, address: BuyerAddress): Pr
     const profileData: BuyerProfile = {
       name: address.name || '',
       addressLine1: address.addressLine1 || '',
-      addressLine2: address.addressLine2 || '', // Ensure empty string if undefined
+      addressLine2: address.addressLine2 || '', 
       gstin: idToUse, 
       stateNameAndCode: address.stateNameAndCode || '',
       contact: address.contact || '',
-      email: address.email || '', // Ensure empty string if undefined
+      email: address.email || '', 
     };
     await setDoc(profileDocRef, profileData, { merge: true }); 
   } catch (error) {
@@ -378,24 +380,23 @@ export const saveInvoiceToFirestore = async (invoice: Invoice): Promise<void> =>
   try {
     const invoiceDocRef = doc(invoicesCollectionRef, invoice.invoiceNumber);
     
-    // Sanitize line items
     const itemsToSave: InvoiceLineItem[] = invoice.items.map(item => ({
       ...item,
-      hsnSac: item.hsnSac || '', // Ensure empty string if undefined
-      gstRate: item.gstRate === undefined || item.gstRate === null ? 0 : Number(item.gstRate), // Ensure 0 if undefined/null
+      hsnSac: item.hsnSac || '', 
+      gstRate: item.gstRate === undefined || item.gstRate === null ? 0 : Number(item.gstRate),
     }));
 
-    // Sanitize buyer address
     const sanitizedBuyerAddress: BuyerAddress = {
       ...invoice.buyerAddress,
-      addressLine2: invoice.buyerAddress.addressLine2 || '', // Ensure empty string
-      email: invoice.buyerAddress.email || '', // Ensure empty string
+      addressLine2: invoice.buyerAddress.addressLine2 || '', 
+      email: invoice.buyerAddress.email || '', 
     };
     
     const invoiceDataToSave: Invoice = { 
       ...invoice, 
       items: itemsToSave,
-      buyerAddress: sanitizedBuyerAddress
+      buyerAddress: sanitizedBuyerAddress,
+      latestPaymentDate: invoice.latestPaymentDate || undefined, // Ensure undefined if not present
     };
 
     console.log("Firebase: Data to save (after sanitization):", JSON.stringify(invoiceDataToSave, null, 2));
@@ -425,7 +426,12 @@ export const getInvoicesFromFirestore = async (): Promise<Invoice[]> => {
         addressLine2: data.buyerAddress?.addressLine2 || '',
         email: data.buyerAddress?.email || '',
       };
-      invoices.push({ ...data, items, buyerAddress } as Invoice);
+      invoices.push({ 
+        ...data, 
+        items, 
+        buyerAddress,
+        latestPaymentDate: data.latestPaymentDate || undefined, 
+      } as Invoice);
     });
     console.log(`Firebase: Fetched ${invoices.length} invoices.`);
     return invoices;
@@ -440,7 +446,6 @@ export const updateInvoiceInFirestore = async (invoiceNumber: string, updates: P
     const invoiceDocRef = doc(invoicesCollectionRef, invoiceNumber);
     const updatesToApply = { ...updates };
 
-    // If items are being updated, sanitize them
     if (updates.items) {
       updatesToApply.items = updates.items.map(item => ({
         ...item,
@@ -448,7 +453,6 @@ export const updateInvoiceInFirestore = async (invoiceNumber: string, updates: P
         gstRate: item.gstRate === undefined || item.gstRate === null ? 0 : Number(item.gstRate),
       }));
     }
-    // If buyerAddress is being updated, sanitize it
     if (updates.buyerAddress) {
         updatesToApply.buyerAddress = {
             ...updates.buyerAddress,
@@ -456,6 +460,10 @@ export const updateInvoiceInFirestore = async (invoiceNumber: string, updates: P
             email: updates.buyerAddress.email || '',
         };
     }
+    if (updates.latestPaymentDate === undefined) {
+        updatesToApply.latestPaymentDate = undefined; // Or use `deleteField()` if you want to remove it
+    }
+
 
     await setDoc(invoiceDocRef, updatesToApply, { merge: true });
   } catch (error) {

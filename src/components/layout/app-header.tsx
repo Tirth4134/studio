@@ -11,7 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Store, Package, FileText, Printer, Settings, Download, Upload, Keyboard, BarChart3, LogOut } from 'lucide-react';
+import { Store, Package, FileText, Printer, Settings, Download, Upload, Keyboard, BarChart3, LogOut, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { logoutUser } from '@/lib/firebase';
 import { useRouter } from 'next/navigation';
@@ -23,6 +23,7 @@ interface AppHeaderProps {
   onExportData: () => void;
   onImportData: (files: FileList | null) => void;
   onShowShortcuts: () => void;
+  isPrinting: boolean;
 }
 
 export default function AppHeader({
@@ -32,6 +33,7 @@ export default function AppHeader({
   onExportData,
   onImportData,
   onShowShortcuts,
+  isPrinting,
 }: AppHeaderProps) {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -73,6 +75,7 @@ export default function AppHeader({
             variant={activeSection === 'inventory' ? "secondary" : "ghost"}
             onClick={() => setActiveSection('inventory')}
             className="text-primary-foreground hover:bg-primary/80"
+            disabled={isPrinting}
           >
             <Package className="mr-2 h-5 w-5" /> Manage Inventory
           </Button>
@@ -80,6 +83,7 @@ export default function AppHeader({
             variant={activeSection === 'invoice' ? "secondary" : "ghost"}
             onClick={() => setActiveSection('invoice')}
             className="text-primary-foreground hover:bg-primary/80"
+            disabled={isPrinting}
           >
             <FileText className="mr-2 h-5 w-5" /> Create Invoice
           </Button>
@@ -87,24 +91,26 @@ export default function AppHeader({
             variant={activeSection === 'reports' ? "secondary" : "ghost"}
             onClick={() => setActiveSection('reports')}
             className="text-primary-foreground hover:bg-primary/80"
+            disabled={isPrinting}
           >
             <BarChart3 className="mr-2 h-5 w-5" /> Reports
           </Button>
-          <Button variant="ghost" onClick={onPrint} className="text-primary-foreground hover:bg-primary/80">
-            <Printer className="mr-2 h-5 w-5" /> Print Invoice
+          <Button variant="ghost" onClick={onPrint} className="text-primary-foreground hover:bg-primary/80" disabled={isPrinting}>
+            {isPrinting ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Printer className="mr-2 h-5 w-5" />}
+            {isPrinting ? "Processing..." : "Print Invoice"}
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-primary/80">
+              <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-primary/80" disabled={isPrinting}>
                 <Settings className="h-5 w-5" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={onExportData}>
+              <DropdownMenuItem onClick={onExportData} disabled={isPrinting}>
                 <Download className="mr-2 h-4 w-4" />
                 Export Data
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleImportClick}>
+              <DropdownMenuItem onClick={handleImportClick} disabled={isPrinting}>
                 <Upload className="mr-2 h-4 w-4" />
                 Import Data
               </DropdownMenuItem>
@@ -114,14 +120,15 @@ export default function AppHeader({
                 accept=".json"
                 style={{ display: 'none' }}
                 onChange={handleFileSelected}
+                disabled={isPrinting}
               />
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={onShowShortcuts}>
+              <DropdownMenuItem onClick={onShowShortcuts} disabled={isPrinting}>
                 <Keyboard className="mr-2 h-4 w-4" />
                 Keyboard Shortcuts
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleLogout}>
+              <DropdownMenuItem onClick={handleLogout} disabled={isPrinting}>
                 <LogOut className="mr-2 h-4 w-4" />
                 Logout
               </DropdownMenuItem>

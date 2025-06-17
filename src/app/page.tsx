@@ -60,6 +60,7 @@ export default function HomePage() {
   const { toast } = useToast();
   const [isClient, setIsClient] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isPrinting, setIsPrinting] = useState(false); // For disabling print button
   const [searchedBuyerProfiles, setSearchedBuyerProfiles] = useState<BuyerProfile[]>([]);
 
 
@@ -77,7 +78,7 @@ export default function HomePage() {
       setPastInvoices(fetchedInvoices);
     } catch (error: any) {
       console.error("HomePage: Error fetching past invoices:", error);
-      toast({ title: "Error", description: `Could not fetch past invoices. ${error.message}`, variant: "destructive" });
+      toast({ title: "Error Fetching Past Invoices", description: `Could not fetch past invoices. ${error.message}`, variant: "destructive" });
     }
   }, [toast]);
 
@@ -154,16 +155,16 @@ export default function HomePage() {
     setCurrentInvoiceNumber(generateInvoiceNumber(invoiceCounter));
   }, [invoiceCounter]);
 
-  const updateInvoiceCounter = async (newCounter: number) => {
+  const updateInvoiceCounterStateAndDb = async (newCounter: number) => {
     setInvoiceCounter(newCounter);
     await saveInvoiceCounterToFirestore(newCounter);
   };
   
-  const updateInventory = async (newInventory: InventoryItem[] | ((prevState: InventoryItem[]) => InventoryItem[])) => {
-    console.log("HomePage: updateInventory called.");
+  const updateInventoryStateAndDb = async (newInventory: InventoryItem[] | ((prevState: InventoryItem[]) => InventoryItem[])) => {
+    console.log("HomePage: updateInventoryStateAndDb called.");
     let finalInventoryToSave: InventoryItem[];
     if (typeof newInventory === 'function') {
-      console.log("HomePage: updateInventory called with a function.");
+      console.log("HomePage: updateInventoryStateAndDb called with a function.");
       setInventory(prevState => {
         const updatedState = newInventory(prevState);
         finalInventoryToSave = updatedState;
@@ -175,7 +176,7 @@ export default function HomePage() {
         return updatedState;
       });
     } else {
-      console.log("HomePage: updateInventory called with a direct value.");
+      console.log("HomePage: updateInventoryStateAndDb called with a direct value.");
       finalInventoryToSave = newInventory;
       console.log("HomePage: Inventory state updated (direct set). Items to save:", finalInventoryToSave.length);
       setInventory(newInventory);
@@ -188,107 +189,116 @@ export default function HomePage() {
 
   const handlePrintInvoice = useCallback(async () => {
     console.log("HomePage: handlePrintInvoice initiated.");
+    if (isPrinting) {
+      toast({ title: "Processing", description: "Invoice finalization is already in progress.", variant: "default" });
+      return;
+    }
     if (invoiceItems.length === 0) {
       toast({ title: "Cannot Print", description: "Invoice is empty. Add items to print.", variant: "destructive" });
       console.log("HomePage: handlePrintInvoice - No items to print.");
       return;
     }
+    setIsPrinting(true);
 
-    const validGstin = buyerAddress.gstin && buyerAddress.gstin.trim() !== "" && !buyerAddress.gstin.includes("(Placeholder)");
-    if (validGstin) {
-      try {
-        console.log("HomePage: Attempting to save buyer profile for GSTIN:", buyerAddress.gstin);
-        await saveBuyerProfile(buyerAddress.gstin, buyerAddress);
-        toast({ title: "Buyer Profile Saved", description: `Details for GSTIN ${buyerAddress.gstin} stored.`, variant: "default", duration: 3000});
-        console.log("HomePage: Buyer profile saved successfully.");
-      } catch (error) {
-        console.error("HomePage: Error saving buyer profile:", error);
-        toast({ title: "Profile Save Error", description: `Could not save buyer profile. Error: ${(error as Error).message}`, variant: "destructive"});
-      }
-    } else {
-         toast({ title: "Info", description: `Buyer profile not saved: GSTIN is empty or placeholder.`, variant: "default", duration: 3000});
-         console.log("HomePage: Buyer profile not saved, GSTIN invalid or placeholder.");
-    }
-
-    const salesRecordsToSave: SalesRecord[] = [];
-    for (const invoiceItem of invoiceItems) {
-      const inventoryItem = inventory.find(inv => inv.id === invoiceItem.id);
-      if (inventoryItem) {
-        const profit = (invoiceItem.price - inventoryItem.buyingPrice) * invoiceItem.quantity;
-        salesRecordsToSave.push({
-          id: generateUniqueId(), 
-          invoiceNumber: currentInvoiceNumber,
-          saleDate: invoiceDate,
-          itemId: invoiceItem.id,
-          itemName: invoiceItem.name,
-          category: inventoryItem.category, 
-          quantitySold: invoiceItem.quantity,
-          sellingPricePerUnit: invoiceItem.price,
-          buyingPricePerUnit: inventoryItem.buyingPrice,
-          totalProfit: profit,
-        });
-      } else {
-        console.warn(`HomePage: Could not find inventory item with ID ${invoiceItem.id} to record sale.`);
-      }
-    }
-
-    if (salesRecordsToSave.length > 0) {
-      try {
-        console.log("HomePage: Attempting to save sales records:", salesRecordsToSave);
-        await saveSalesRecordsToFirestore(salesRecordsToSave);
-        toast({ title: "Sales Recorded", description: `${salesRecordsToSave.length} item sales recorded successfully for profit tracking.`, variant: "default", duration: 4000 });
-        console.log("HomePage: Sales records saved successfully.");
-      } catch (error) {
-        console.error("HomePage: Error saving sales records:", error);
-        toast({ title: "Sales Record Error", description: `Could not save sales details for profit tracking. Error: ${(error as Error).message}`, variant: "destructive"});
-      }
-    }
-    
-    const subTotal = invoiceItems.reduce((sum, item) => sum + item.total, 0);
-    let totalTaxAmount = 0;
-    invoiceItems.forEach(item => {
-        const itemGstRate = item.gstRate === undefined || item.gstRate === null || isNaN(item.gstRate) ? 0 : item.gstRate;
-        totalTaxAmount += item.total * (itemGstRate / 100);
-    });
-    const grandTotal = subTotal + totalTaxAmount;
-
-    const invoiceToSave: Invoice = {
-      invoiceNumber: currentInvoiceNumber,
-      invoiceDate: invoiceDate,
-      buyerGstin: buyerAddress.gstin, 
-      buyerName: buyerAddress.name,
-      buyerAddress: buyerAddress,
-      items: invoiceItems,
-      subTotal: subTotal,
-      taxAmount: totalTaxAmount,
-      grandTotal: grandTotal,
-      amountPaid: 0, 
-      status: 'Unpaid', 
-    };
-
-    console.log("HomePage: Attempting to save invoice. Data:", JSON.stringify(invoiceToSave, null, 2));
     try {
-      await saveInvoiceToFirestore(invoiceToSave);
+      const validGstin = buyerAddress.gstin && buyerAddress.gstin.trim() !== "" && !buyerAddress.gstin.includes("(Placeholder)");
+      if (validGstin) {
+        try {
+          console.log("HomePage: Attempting to save buyer profile for GSTIN:", buyerAddress.gstin);
+          await saveBuyerProfile(buyerAddress.gstin, buyerAddress);
+          toast({ title: "Buyer Profile Saved", description: `Details for GSTIN ${buyerAddress.gstin} stored.`, variant: "default", duration: 3000});
+          console.log("HomePage: Buyer profile saved successfully.");
+        } catch (error) {
+          console.error("HomePage: Error saving buyer profile:", error);
+          toast({ title: "Profile Save Error", description: `Could not save buyer profile. Error: ${(error as Error).message}`, variant: "destructive"});
+        }
+      } else {
+           toast({ title: "Info", description: `Buyer profile not saved: GSTIN is empty or placeholder.`, variant: "default", duration: 3000});
+           console.log("HomePage: Buyer profile not saved, GSTIN invalid or placeholder.");
+      }
+
+      const salesRecordsToSave: SalesRecord[] = [];
+      for (const invoiceItem of invoiceItems) {
+        const inventoryItem = inventory.find(inv => inv.id === invoiceItem.id);
+        if (inventoryItem) {
+          const profit = (invoiceItem.price - inventoryItem.buyingPrice) * invoiceItem.quantity;
+          salesRecordsToSave.push({
+            id: generateUniqueId(), 
+            invoiceNumber: currentInvoiceNumber,
+            saleDate: invoiceDate, // This is the invoice date
+            itemId: invoiceItem.id,
+            itemName: invoiceItem.name,
+            category: inventoryItem.category, 
+            quantitySold: invoiceItem.quantity,
+            sellingPricePerUnit: invoiceItem.price,
+            buyingPricePerUnit: inventoryItem.buyingPrice,
+            totalProfit: profit,
+          });
+        } else {
+          console.warn(`HomePage: Could not find inventory item with ID ${invoiceItem.id} to record sale.`);
+        }
+      }
+
+      if (salesRecordsToSave.length > 0) {
+          console.log("HomePage: Attempting to save sales records:", salesRecordsToSave);
+          await saveSalesRecordsToFirestore(salesRecordsToSave); // This throws on error
+          toast({ title: "Sales Recorded", description: `${salesRecordsToSave.length} item sales recorded successfully for profit tracking.`, variant: "default", duration: 4000 });
+          console.log("HomePage: Sales records saved successfully.");
+      }
+      
+      const subTotal = invoiceItems.reduce((sum, item) => sum + item.total, 0);
+      let totalTaxAmount = 0;
+      invoiceItems.forEach(item => {
+          const itemGstRate = item.gstRate === undefined || item.gstRate === null || isNaN(item.gstRate) ? 0 : item.gstRate;
+          totalTaxAmount += item.total * (itemGstRate / 100);
+      });
+      const grandTotal = subTotal + totalTaxAmount;
+
+      const invoiceToSave: Invoice = {
+        invoiceNumber: currentInvoiceNumber,
+        invoiceDate: invoiceDate,
+        buyerGstin: buyerAddress.gstin, 
+        buyerName: buyerAddress.name,
+        buyerAddress: buyerAddress,
+        items: invoiceItems,
+        subTotal: subTotal,
+        taxAmount: totalTaxAmount,
+        grandTotal: grandTotal,
+        amountPaid: 0, 
+        status: 'Unpaid', 
+        latestPaymentDate: undefined, // Initialize as undefined
+      };
+
+      console.log("HomePage: Attempting to save invoice. Data:", JSON.stringify(invoiceToSave, null, 2));
+      await saveInvoiceToFirestore(invoiceToSave); // This throws on error
       toast({ title: "Invoice Saved", description: `Invoice ${currentInvoiceNumber} saved successfully to database.`, variant: "default" });
       console.log(`HomePage: Invoice ${currentInvoiceNumber} saved successfully to Firestore.`);
+      
+      // All DB operations successful, now update local state
       setPastInvoices(prev => [invoiceToSave, ...prev].sort((a, b) => new Date(b.invoiceDate).getTime() - new Date(a.invoiceDate).getTime() || b.invoiceNumber.localeCompare(a.invoiceNumber)));
       console.log("HomePage: Past invoices state updated.");
+
+      console.log("HomePage: Triggering window.print().");
+      window.print();
+
+      // Update invoice counter and reset buyer address only after all saves and print
+      updateInvoiceCounterStateAndDb(invoiceCounter + 1);
+      console.log("HomePage: Invoice counter updated.");
+      
+      // Reset buyer address to global default from Firestore to avoid carrying over to next invoice
+      getAppSettingsFromFirestore(initialBuyerAddressGlobal).then(settings => {
+        setBuyerAddress(settings.buyerAddress);
+        console.log("HomePage: Buyer address reset from settings for new invoice.");
+      });
+
+
     } catch (error) {
-      console.error("HomePage: Error saving invoice to Firestore:", error);
-      toast({ title: "Invoice Save Error", description: `Could not save invoice ${currentInvoiceNumber} to database. Error: ${(error as Error).message}`, variant: "destructive"});
+        console.error("HomePage: CRITICAL ERROR during invoice finalization (print/save):", error);
+        toast({ title: "Invoice Finalization Error", description: `Could not finalize invoice ${currentInvoiceNumber}. Error: ${(error as Error).message}. Please check console.`, variant: "destructive", duration: 10000});
+    } finally {
+        setIsPrinting(false);
     }
-
-    console.log("HomePage: Triggering window.print().");
-    window.print();
-    updateInvoiceCounter(invoiceCounter + 1);
-    console.log("HomePage: Invoice counter updated.");
-    getAppSettingsFromFirestore(initialBuyerAddressGlobal).then(settings => {
-      setBuyerAddress(settings.buyerAddress);
-      console.log("HomePage: Buyer address reset from settings.");
-    });
-
-
-  }, [invoiceItems, inventory, currentInvoiceNumber, invoiceDate, invoiceCounter, toast, buyerAddress]);
+  }, [isPrinting, invoiceItems, inventory, currentInvoiceNumber, invoiceDate, invoiceCounter, toast, buyerAddress, initialBuyerAddressGlobal]);
 
   const lookupBuyerByGstin = async (gstin: string) => {
     if (!gstin || gstin.trim() === "") {
@@ -636,7 +646,7 @@ export default function HomePage() {
     } else {
         toast({ title: "New Invoice", description: "Invoice is already empty.", variant: "default" });
     }
-  }, [invoiceItems, toast, setInventory]);
+  }, [invoiceItems, toast, setInventory, initialBuyerAddressGlobal]);
 
   const handleInvoiceUpdate = (updatedInvoice: Invoice) => {
     setPastInvoices(prev => 
@@ -678,18 +688,19 @@ export default function HomePage() {
         onExportData={handleExportData}
         onImportData={handleImportData}
         onShowShortcuts={handleShowShortcuts}
+        isPrinting={isPrinting}
       />
       <main className="flex-grow container mx-auto p-4 md:p-6">
         {activeSection === 'inventory' && (
           <InventorySection 
             inventory={inventory} 
-            setInventory={updateInventory} 
+            setInventory={updateInventoryStateAndDb} 
           />
         )}
         {activeSection === 'invoice' && (
           <InvoiceSection
             inventory={inventory}
-            setInventory={updateInventory} 
+            setInventory={updateInventoryStateAndDb} 
             invoiceItems={invoiceItems}
             setInvoiceItems={setInvoiceItems} 
             invoiceNumber={currentInvoiceNumber}
@@ -701,13 +712,14 @@ export default function HomePage() {
             onLookupBuyerByName={lookupBuyerProfilesByName}
             searchedBuyerProfiles={searchedBuyerProfiles}
             clearSearchedBuyerProfiles={() => setSearchedBuyerProfiles([])}
+            isPrinting={isPrinting}
           />
         )}
         {activeSection === 'reports' && (
           <ReportsSection 
             pastInvoices={pastInvoices}
             onInvoiceUpdate={handleInvoiceUpdate} 
-            isLoading={isLoading}
+            isLoading={isLoading} // Pass the main isLoading state for initial load indication
             fetchPastInvoices={fetchPastInvoices}
           />
         )}

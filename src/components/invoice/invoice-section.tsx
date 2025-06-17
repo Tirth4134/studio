@@ -21,6 +21,7 @@ interface InvoiceSectionProps {
   onLookupBuyerByName: (nameQuery: string) => Promise<void>;
   searchedBuyerProfiles: BuyerProfile[];
   clearSearchedBuyerProfiles: () => void;
+  isPrinting: boolean;
 }
 
 export default function InvoiceSection({
@@ -37,6 +38,7 @@ export default function InvoiceSection({
   onLookupBuyerByName,
   searchedBuyerProfiles,
   clearSearchedBuyerProfiles,
+  isPrinting,
 }: InvoiceSectionProps) {
   const { toast } = useToast();
 
@@ -64,7 +66,6 @@ export default function InvoiceSection({
                 ...item,
                 quantity: item.quantity + newItemLine.quantity,
                 total: item.price * (item.quantity + newItemLine.quantity),
-                // HSN/SAC and GST rate are taken from the first add, assuming they don't change for the same item within one invoice
               }
             : item
         )
@@ -125,7 +126,7 @@ export default function InvoiceSection({
     <div className="space-y-6">
       <CreateInvoiceForm
         inventory={inventory}
-        onAddItemToInvoice={(item) => handleAddItemToInvoice(item as Omit<InvoiceLineItem, 'total'>)} // Cast to satisfy, total is calculated internally
+        onAddItemToInvoice={(item) => handleAddItemToInvoice(item as Omit<InvoiceLineItem, 'total'>)}
         buyerAddress={buyerAddress}
         setBuyerAddress={setBuyerAddress}
         onLookupBuyerByGSTIN={onLookupBuyerByGSTIN}
@@ -141,7 +142,9 @@ export default function InvoiceSection({
         onClearInvoice={handleClearInvoice}
         onPrintInvoice={onPrintInvoice}
         buyerAddress={buyerAddress}
+        isPrinting={isPrinting}
       />
     </div>
   );
 }
+

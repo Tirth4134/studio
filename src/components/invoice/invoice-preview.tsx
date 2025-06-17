@@ -2,7 +2,7 @@
 "use client";
 
 import { Button } from '@/components/ui/button';
-import { Trash2, Printer } from 'lucide-react';
+import { Trash2, Printer, Loader2 } from 'lucide-react';
 import type { InvoiceLineItem, BuyerAddress } from '@/types';
 
 interface InvoicePreviewProps {
@@ -13,6 +13,7 @@ interface InvoicePreviewProps {
   onClearInvoice: () => void;
   onPrintInvoice: () => void;
   buyerAddress: BuyerAddress;
+  isPrinting: boolean;
 }
 
 export default function InvoicePreview({
@@ -23,11 +24,11 @@ export default function InvoicePreview({
   onClearInvoice,
   onPrintInvoice,
   buyerAddress,
+  isPrinting,
 }: InvoicePreviewProps) {
 
   const subTotal = invoiceItems.reduce((sum, item) => sum + item.total, 0);
   
-  // Calculate the accurate total tax amount based on individual item GST rates
   let totalTaxAmount = 0;
   invoiceItems.forEach(item => {
     const itemGstRate = item.gstRate === undefined || item.gstRate === null || isNaN(item.gstRate) ? 0 : item.gstRate;
@@ -36,7 +37,6 @@ export default function InvoicePreview({
     totalTaxAmount += itemIndividualTax;
   });
   
-  // Calculate values for the simplified tax summary table display
   let totalTaxableValueForSummaryDisplay = 0;
   invoiceItems.forEach(item => {
     const itemGstRate = item.gstRate === undefined || item.gstRate === null || isNaN(item.gstRate) ? 0 : item.gstRate;
@@ -49,7 +49,7 @@ export default function InvoicePreview({
   const sgstForSummaryDisplay = totalTaxableValueForSummaryDisplay * 0.09;
   const totalTaxForSummaryTable = cgstForSummaryDisplay + sgstForSummaryDisplay;
 
-  const grandTotal = subTotal + totalTaxAmount; // Grand total uses the accurate totalTaxAmount
+  const grandTotal = subTotal + totalTaxAmount;
   const totalQuantity = invoiceItems.reduce((sum, item) => sum + item.quantity, 0);
 
   const numberToWords = (num: number): string => {
@@ -237,6 +237,7 @@ export default function InvoicePreview({
                         size="sm"
                         onClick={() => onRemoveItem(item.id, item.quantity)}
                         className="h-6 w-6 p-0" 
+                        disabled={isPrinting}
                       >
                         <Trash2 className="h-3 w-3" />
                       </Button>
@@ -313,7 +314,6 @@ export default function InvoicePreview({
         </div>
 
         <div className="border-b p-1 text-xs bg-gray-50 card-footer">
-          {/* This uses the accurate totalTaxAmount from individual item calculations */}
           <div><strong>Tax Amount (in words):</strong> {numberToWords(totalTaxAmount)}</div>
         </div>
 
@@ -346,11 +346,12 @@ export default function InvoicePreview({
       </div>
 
       <div className="no-print p-4 flex justify-between bg-gray-50 mt-4 rounded-lg">
-        <Button variant="destructive" onClick={onClearInvoice}>
+        <Button variant="destructive" onClick={onClearInvoice} disabled={isPrinting}>
           <Trash2 className="mr-2 h-4 w-4" /> Clear Invoice
         </Button>
-        <Button onClick={onPrintInvoice} className="bg-primary hover:bg-primary/90 text-primary-foreground">
-          <Printer className="mr-2 h-4 w-4" /> Print Invoice
+        <Button onClick={onPrintInvoice} className="bg-primary hover:bg-primary/90 text-primary-foreground" disabled={isPrinting}>
+          {isPrinting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Printer className="mr-2 h-4 w-4" />}
+          {isPrinting ? "Processing..." : "Print Invoice"}
         </Button>
       </div>
     </div>
