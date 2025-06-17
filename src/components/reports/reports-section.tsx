@@ -1,16 +1,25 @@
 
 "use client";
 
-import { useEffect, useState, useMemo } from 'react'; // Ensured useState is imported
-import type { SalesRecord } from '@/types';
-import { getSalesRecordsFromFirestore } from '@/lib/firebase';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import type { SalesRecord, Invoice, BuyerAddress } from '@/types';
+import { getSalesRecordsFromFirestore, updateInvoiceInFirestore, getInvoicesFromFirestore } from '@/lib/firebase';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DatePickerWithRange } from "@/components/ui/date-picker-with-range";
-import { BarChart3, CalendarDays, AlertTriangle, TrendingUp, TrendingDown, DollarSign } from 'lucide-react';
+import { BarChart3, CalendarDays, AlertTriangle, TrendingUp, TrendingDown, DollarSign, Edit, Save, XCircle } from 'lucide-react';
 import ProfitLossChart from './profit-loss-chart';
-import { subDays, format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, parseISO, differenceInDays, startOfYear, endOfYear } from 'date-fns';
+import { subDays, format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, parseISO, differenceInDays, startOfYear, endOfYear, isValid } from 'date-fns';
 import type { DateRange } from "react-day-picker";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { useToast } from '@/hooks/use-toast';
+
 
 interface AggregatedDataPoint {
   date: string;
@@ -18,145 +27,176 @@ interface AggregatedDataPoint {
   loss: number;
 }
 
-export default function ReportsSection() {
+interface ReportsSectionProps {
+  pastInvoices: Invoice[];
+  onInvoiceUpdate: (updatedInvoice: Invoice) => void;
+  isLoading: boolean; // isLoading from parent
+  fetchPastInvoices: () => Promise<void>; // Function to refresh past invoices
+}
+
+
+export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoading: initialIsLoading, fetchPastInvoices }: ReportsSectionProps) {
   const [salesRecords, setSalesRecords] = useState<SalesRecord[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(initialIsLoading);
   const [error, setError] = useState<string | null>(null);
   const [timeRangeOption, setTimeRangeOption] = useState<string>('last7days'); 
-  const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>(undefined); // Changed React.useState to useState
+  const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>(undefined);
+  
+  const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
+  const [isEditDialogOpén, setIsEditDialogOpen] = useState(false);
+  const [editAmountPaid, setEditAmountPaid] = useState<string>('');
+  const [editStatus, setEditStatus] = useState<Invoice['status']>('Unpaid');
+  const { toast } = useToast();
 
   useEffect(() => {
-    const fetchSalesData = async () => {
-      setIsLoading(true);
+    setIsLoading(true); // Use local loading state for this component's data fetching
+    const fetchSalesAndInvoices = async () => {
       setError(null);
       try {
         const records = await getSalesRecordsFromFirestore();
         setSalesRecords(records.sort((a, b) => new Date(a.saleDate).getTime() - new Date(b.saleDate).getTime()));
-      } catch (err) {
-        console.error("Error fetching sales records:", err);
-        setError("Failed to load sales records. Please try again later.");
+        // Past invoices are now passed as a prop, but we can refresh them if needed
+        // await fetchPastInvoices(); // Or rely on parent to keep it up to date
+      } catch (err: any) {
+        console.error("Error fetching data for reports:", err);
+        setError(`Failed to load report data. ${err.message || 'Please try again later.'}`);
       } finally {
         setIsLoading(false);
       }
     };
-    fetchSalesData();
-  }, []);
+    fetchSalesAndInvoices();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Fetch on initial mount
+
+  useEffect(() => {
+    // If parent indicates loading, update local state
+    setIsLoading(initialIsLoading);
+  }, [initialIsLoading]);
 
   const processedChartData = useMemo(() => {
     if (salesRecords.length === 0) return [];
-
     const now = new Date();
     let startDate: Date;
-    let endDate: Date = now; // Default end date is today
+    let endDate: Date = now;
 
     if (timeRangeOption === 'custom' && customDateRange?.from) {
         startDate = customDateRange.from;
-        endDate = customDateRange.to || customDateRange.from; // If no 'to', use 'from' as single day
+        endDate = customDateRange.to || customDateRange.from;
     } else {
         switch (timeRangeOption) {
-            case 'today':
-                startDate = now;
-                endDate = now;
-                break;
-            case 'last7days':
-                startDate = subDays(now, 6);
-                break;
-            case 'last30days':
-                startDate = subDays(now, 29);
-                break;
-            case 'thisWeek':
-                startDate = startOfWeek(now, { weekStartsOn: 1 });
-                endDate = endOfWeek(now, { weekStartsOn: 1});
-                break;
-            case 'thisMonth':
-                startDate = startOfMonth(now);
-                endDate = endOfMonth(now);
-                break;
-            case 'lastYear':
-                startDate = startOfYear(subDays(now, 365));
-                endDate = endOfYear(subDays(now, 365));
-                break;
-            case 'thisYear':
-                startDate = startOfYear(now);
-                endDate = endOfYear(now);
-                break;
-            case 'allTime':
-            default:
-                // Find earliest date from records if 'allTime'
+            case 'today': startDate = now; endDate = now; break;
+            case 'last7days': startDate = subDays(now, 6); break;
+            case 'last30days': startDate = subDays(now, 29); break;
+            case 'thisWeek': startDate = startOfWeek(now, { weekStartsOn: 1 }); endDate = endOfWeek(now, { weekStartsOn: 1}); break;
+            case 'thisMonth': startDate = startOfMonth(now); endDate = endOfMonth(now); break;
+            case 'lastYear': startDate = startOfYear(subDays(now, 365)); endDate = endOfYear(subDays(now, 365)); break;
+            case 'thisYear': startDate = startOfYear(now); endDate = endOfYear(now); break;
+            case 'allTime': default:
                 startDate = salesRecords.length > 0 ? parseISO(salesRecords[0].saleDate) : now;
-                // endDate is already 'now'
                 break;
         }
     }
     
-    // Ensure dates are compared at midnight for consistency by normalizing them
     const normalizedStartDate = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
     const normalizedEndDate = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate(), 23, 59, 59, 999);
 
-
     const filteredRecords = salesRecords.filter(record => {
       const recordDate = parseISO(record.saleDate);
-      const normalizedRecordDate = new Date(recordDate.getFullYear(), recordDate.getMonth(), recordDate.getDate());
-      return normalizedRecordDate >= normalizedStartDate && normalizedRecordDate <= normalizedEndDate;
+      return isValid(recordDate) && new Date(recordDate.getFullYear(), recordDate.getMonth(), recordDate.getDate()) >= normalizedStartDate && new Date(recordDate.getFullYear(), recordDate.getMonth(), recordDate.getDate()) <= normalizedEndDate;
     });
     
     const aggregatedMap: Record<string, { profit: number; loss: number }> = {};
-
-    // Determine aggregation period (daily, weekly, monthly) based on range
     const daysDiff = differenceInDays(normalizedEndDate, normalizedStartDate);
-    let aggregationFormat = 'yyyy-MM-dd'; // Daily
-    if (daysDiff > 90) aggregationFormat = 'yyyy-MM'; // Monthly for > 3 months
-    else if (daysDiff > 30) aggregationFormat = 'yyyy-MM-dd'; // Could be weekly, stick to daily for now 'yyyy-ww' but formatting date object for week is trickier.
+    let aggregationFormat = 'yyyy-MM-dd'; 
+    let displayFormat = 'dd MMM';
+    if (daysDiff > 90) { // Monthly for > ~3 months
+      aggregationFormat = 'yyyy-MM'; 
+      displayFormat = 'MMM yyyy';
+    } else if (daysDiff > 30) { // Daily but could be weekly. Chart handles daily well.
+       // displayFormat remains 'dd MMM'
+    }
+
 
     filteredRecords.forEach(record => {
-      let dateKey: string;
       const saleDateObj = parseISO(record.saleDate);
+      if (!isValid(saleDateObj)) return;
 
-      if (aggregationFormat === 'yyyy-MM') {
-          dateKey = format(saleDateObj, 'MMM yyyy'); // e.g., "Oct 2023"
-      } else { // daily
-          dateKey = format(saleDateObj, 'yyyy-MM-dd'); // e.g., "2023-10-27"
-      }
+      let dateKey: string;
+      if (aggregationFormat === 'yyyy-MM') dateKey = format(saleDateObj, 'yyyy-MM'); // Key for sorting
+      else dateKey = format(saleDateObj, 'yyyy-MM-dd');
       
-      if (!aggregatedMap[dateKey]) {
-        aggregatedMap[dateKey] = { profit: 0, loss: 0 };
-      }
-      // Assuming record.totalProfit is positive for profit and negative for actual loss value
-      if (record.totalProfit > 0) {
-        aggregatedMap[dateKey].profit += record.totalProfit;
-      } else if (record.totalProfit < 0) {
-        // Store loss as a positive number for charting if needed, or handle negative in chart
-        aggregatedMap[dateKey].loss += Math.abs(record.totalProfit); 
-      }
+      if (!aggregatedMap[dateKey]) aggregatedMap[dateKey] = { profit: 0, loss: 0 };
+      
+      if (record.totalProfit > 0) aggregatedMap[dateKey].profit += record.totalProfit;
+      else if (record.totalProfit < 0) aggregatedMap[dateKey].loss += Math.abs(record.totalProfit); 
     });
 
     return Object.entries(aggregatedMap)
-      .map(([date, { profit, loss }]) => ({ date, profit, loss }))
-      // Sort logic needs to handle 'MMM yyyy' vs 'yyyy-MM-dd'
-      .sort((a,b) => {
-          // A simple way to sort if keys are consistently formatted, otherwise parse them
-          if (aggregationFormat === 'yyyy-MM') {
-             // This will sort "Apr 2023" before "Jan 2024", but "Feb 2023" before "Jan 2023" if not careful
-             // Proper date object comparison is better for mixed formats
-             return new Date(a.date.replace(/(\w{3}) (\d{4})/, '$1 1, $2')).getTime() - new Date(b.date.replace(/(\w{3}) (\d{4})/, '$1 1, $2')).getTime();
-
-          }
-          return new Date(a.date).getTime() - new Date(b.date).getTime();
-      });
+      .map(([dateKey, { profit, loss }]) => {
+          const dateForDisplay = aggregationFormat === 'yyyy-MM' ? format(parseISO(dateKey + '-01'), displayFormat) : format(parseISO(dateKey), displayFormat);
+          return { date: dateForDisplay, profit, loss, originalDate: dateKey }; // Keep original for sorting
+      })
+      .sort((a,b) => new Date(a.originalDate).getTime() - new Date(b.originalDate).getTime());
 
   }, [salesRecords, timeRangeOption, customDateRange]);
 
   const summaryStats = useMemo(() => {
     const totalProfit = processedChartData.reduce((sum, item) => sum + item.profit, 0);
-    const totalLoss = processedChartData.reduce((sum, item) => sum + item.loss, 0); // Loss is stored as positive
+    const totalLoss = processedChartData.reduce((sum, item) => sum + item.loss, 0);
     const netProfit = totalProfit - totalLoss;
     return { totalProfit, totalLoss, netProfit };
   }, [processedChartData]);
 
   const handleTimeRangeChange = (value: string) => {
     setTimeRangeOption(value);
-    if (value !== 'custom') {
-      setCustomDateRange(undefined); // Clear custom range if a predefined one is selected
+    if (value !== 'custom') setCustomDateRange(undefined);
+  };
+
+  const handleEditInvoiceStatus = (invoice: Invoice) => {
+    setEditingInvoice(invoice);
+    setEditAmountPaid(invoice.amountPaid.toString());
+    setEditStatus(invoice.status);
+    setIsEditDialogOpen(true);
+  };
+
+  const handleSaveInvoiceUpdate = async () => {
+    if (!editingInvoice) return;
+    const amountPaidNum = parseFloat(editAmountPaid);
+    if (isNaN(amountPaidNum) || amountPaidNum < 0) {
+      toast({ title: "Invalid Amount", description: "Please enter a valid amount paid.", variant: "destructive" });
+      return;
+    }
+
+    let newStatus = editStatus;
+    if (amountPaidNum === 0 && newStatus !== 'Cancelled') newStatus = 'Unpaid';
+    else if (amountPaidNum > 0 && amountPaidNum < editingInvoice.grandTotal && newStatus !== 'Cancelled') newStatus = 'Partially Paid';
+    else if (amountPaidNum >= editingInvoice.grandTotal && newStatus !== 'Cancelled') newStatus = 'Paid';
+    // If status is 'Cancelled', it remains 'Cancelled' unless changed manually by user.
+
+    const updatedInvoice: Invoice = {
+      ...editingInvoice,
+      amountPaid: amountPaidNum,
+      status: newStatus,
+    };
+
+    try {
+      await updateInvoiceInFirestore(editingInvoice.invoiceNumber, { amountPaid: amountPaidNum, status: newStatus });
+      onInvoiceUpdate(updatedInvoice); // Update local state in parent
+      toast({ title: "Invoice Updated", description: `Status for invoice ${editingInvoice.invoiceNumber} updated.` });
+      setIsEditDialogOpen(false);
+      setEditingInvoice(null);
+    } catch (error: any) {
+      toast({ title: "Update Failed", description: `Could not update invoice. ${error.message}`, variant: "destructive" });
+    }
+  };
+
+  const getStatusBadgeVariant = (status: Invoice['status']): "default" | "secondary" | "destructive" | "outline" => {
+    switch (status) {
+      case 'Paid': return 'default'; // Greenish in theme
+      case 'Partially Paid': return 'secondary'; // Bluish/Yellowish in theme
+      case 'Unpaid': return 'destructive'; // Reddish in theme
+      case 'Cancelled': return 'outline'; // Greyish
+      default: return 'outline';
     }
   };
 
@@ -165,7 +205,7 @@ export default function ReportsSection() {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
-        <p className="ml-4 text-muted-foreground">Loading sales data...</p>
+        <p className="ml-4 text-muted-foreground">Loading reports data...</p>
       </div>
     );
   }
@@ -180,6 +220,7 @@ export default function ReportsSection() {
         </CardHeader>
         <CardContent>
           <p>{error}</p>
+          <p className="mt-2 text-sm">This might be due to a missing Firestore index. Please check your browser's developer console for a link to create the required index.</p>
         </CardContent>
       </Card>
     );
@@ -190,87 +231,42 @@ export default function ReportsSection() {
       <Card className="shadow-lg">
         <CardHeader className="bg-secondary/30">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="flex items-center">
-                <BarChart3 className="mr-2 h-6 w-6 text-secondary-foreground" />
-                <CardTitle className="font-headline text-xl">Profit & Loss Report</CardTitle>
-            </div>
+            <div className="flex items-center"> <BarChart3 className="mr-2 h-6 w-6 text-secondary-foreground" /> <CardTitle className="font-headline text-xl">Profit & Loss Report</CardTitle> </div>
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 w-full sm:w-auto">
                 <Select value={timeRangeOption} onValueChange={handleTimeRangeChange}>
-                    <SelectTrigger className="w-full sm:w-[180px]">
-                        <SelectValue placeholder="Select time range" />
-                    </SelectTrigger>
+                    <SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Select time range" /></SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="today">Today</SelectItem>
-                        <SelectItem value="last7days">Last 7 Days</SelectItem>
-                        <SelectItem value="last30days">Last 30 Days</SelectItem>
-                        <SelectItem value="thisWeek">This Week</SelectItem>
-                        <SelectItem value="thisMonth">This Month</SelectItem>
-                        <SelectItem value="thisYear">This Year</SelectItem>
-                        <SelectItem value="lastYear">Last Year</SelectItem>
-                        <SelectItem value="allTime">All Time</SelectItem>
-                        <SelectItem value="custom">Custom Range</SelectItem>
+                        <SelectItem value="today">Today</SelectItem> <SelectItem value="last7days">Last 7 Days</SelectItem> <SelectItem value="last30days">Last 30 Days</SelectItem>
+                        <SelectItem value="thisWeek">This Week</SelectItem> <SelectItem value="thisMonth">This Month</SelectItem> <SelectItem value="thisYear">This Year</SelectItem>
+                        <SelectItem value="lastYear">Last Year</SelectItem> <SelectItem value="allTime">All Time</SelectItem> <SelectItem value="custom">Custom Range</SelectItem>
                     </SelectContent>
                 </Select>
-                {timeRangeOption === 'custom' && (
-                    <DatePickerWithRange 
-                        date={customDateRange} 
-                        setDate={setCustomDateRange} 
-                        className="w-full sm:w-auto"
-                    />
-                )}
+                {timeRangeOption === 'custom' && <DatePickerWithRange date={customDateRange} setDate={setCustomDateRange} className="w-full sm:w-auto"/>}
             </div>
           </div>
           <CardDescription className="pt-4">
             Visual overview of your profits and losses. Current View: <span className="font-semibold">
-            {
-                timeRangeOption === 'custom' ? (customDateRange?.from ? (customDateRange.to ? `${format(customDateRange.from, "LLL dd, y")} - ${format(customDateRange.to, "LLL dd, y")}`: format(customDateRange.from, "LLL dd, y")) : "Custom Range") :
-                timeRangeOption === 'today' ? 'Today' :
-                timeRangeOption === 'last7days' ? 'Last 7 Days' :
-                timeRangeOption === 'last30days' ? 'Last 30 Days' :
-                timeRangeOption === 'thisWeek' ? 'This Week' :
-                timeRangeOption === 'thisMonth' ? 'This Month' :
-                timeRangeOption === 'thisYear' ? 'This Year' :
-                timeRangeOption === 'lastYear' ? 'Last Year' :
-                'All Time'
-            }
+            { timeRangeOption === 'custom' ? (customDateRange?.from ? (customDateRange.to ? `${format(customDateRange.from, "LLL dd, y")} - ${format(customDateRange.to, "LLL dd, y")}`: format(customDateRange.from, "LLL dd, y")) : "Custom Range") :
+              timeRangeOption.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
             </span>
           </CardDescription>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
             <Card className="bg-background/70">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Total Profit</CardTitle>
-                    <TrendingUp className="h-4 w-4 text-green-500" />
-                </CardHeader>
-                <CardContent>
-                    <div className="text-2xl font-bold text-green-600">₹{summaryStats.totalProfit.toFixed(2)}</div>
-                </CardContent>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Total Profit</CardTitle><TrendingUp className="h-4 w-4 text-green-500" /></CardHeader>
+                <CardContent><div className="text-2xl font-bold text-green-600">₹{summaryStats.totalProfit.toFixed(2)}</div></CardContent>
             </Card>
             <Card className="bg-background/70">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Total Losses</CardTitle>
-                    <TrendingDown className="h-4 w-4 text-red-500" />
-                </CardHeader>
-                <CardContent>
-                    <div className="text-2xl font-bold text-red-600">₹{summaryStats.totalLoss.toFixed(2)}</div>
-                </CardContent>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Total Losses</CardTitle><TrendingDown className="h-4 w-4 text-red-500" /></CardHeader>
+                <CardContent><div className="text-2xl font-bold text-red-600">₹{summaryStats.totalLoss.toFixed(2)}</div></CardContent>
             </Card>
             <Card className="bg-background/70">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Net Profit</CardTitle>
-                    <DollarSign className={`h-4 w-4 ${summaryStats.netProfit >= 0 ? 'text-blue-500' : 'text-orange-500'}`} />
-                </CardHeader>
-                <CardContent>
-                    <div className={`text-2xl font-bold ${summaryStats.netProfit >= 0 ? 'text-blue-600' : 'text-orange-600'}`}>
-                        ₹{summaryStats.netProfit.toFixed(2)}
-                    </div>
-                </CardContent>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Net Profit</CardTitle><DollarSign className={`h-4 w-4 ${summaryStats.netProfit >= 0 ? 'text-blue-500' : 'text-orange-500'}`} /></CardHeader>
+                <CardContent><div className={`text-2xl font-bold ${summaryStats.netProfit >= 0 ? 'text-blue-600' : 'text-orange-600'}`}>₹{summaryStats.netProfit.toFixed(2)}</div></CardContent>
             </Card>
           </div>
         </CardHeader>
         <CardContent className="pt-6">
-          {processedChartData.length > 0 ? (
-            <ProfitLossChart data={processedChartData} />
-          ) : (
+          {processedChartData.length > 0 ? <ProfitLossChart data={processedChartData} /> : (
             <div className="text-center py-10">
               <BarChart3 className="mx-auto h-12 w-12 text-muted-foreground" />
               <p className="mt-4 text-muted-foreground">No sales data available for the selected period.</p>
@@ -280,8 +276,89 @@ export default function ReportsSection() {
           )}
         </CardContent>
       </Card>
+
+      <Card className="shadow-lg mt-6">
+        <CardHeader className="bg-secondary/30">
+          <CardTitle className="font-headline text-xl">Past Invoices</CardTitle>
+          <CardDescription>Review and manage payment status for previously generated invoices.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ScrollArea className="h-[400px]">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Inv #</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Customer</TableHead>
+                  <TableHead className="text-right">Total (₹)</TableHead>
+                  <TableHead className="text-right">Paid (₹)</TableHead>
+                  <TableHead className="text-right">Outstanding (₹)</TableHead>
+                  <TableHead className="text-center">Status</TableHead>
+                  <TableHead className="text-center">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {pastInvoices.length === 0 ? (
+                  <TableRow><TableCell colSpan={8} className="text-center">No past invoices found.</TableCell></TableRow>
+                ) : (
+                  pastInvoices.map(invoice => (
+                    <TableRow key={invoice.invoiceNumber}>
+                      <TableCell className="font-medium">{invoice.invoiceNumber}</TableCell>
+                      <TableCell>{invoice.invoiceDate}</TableCell>
+                      <TableCell>{invoice.buyerName} ({invoice.buyerGstin || 'N/A'})</TableCell>
+                      <TableCell className="text-right">{invoice.grandTotal.toFixed(2)}</TableCell>
+                      <TableCell className="text-right">{invoice.amountPaid.toFixed(2)}</TableCell>
+                      <TableCell className="text-right font-semibold">{(invoice.grandTotal - invoice.amountPaid).toFixed(2)}</TableCell>
+                      <TableCell className="text-center">
+                        <Badge variant={getStatusBadgeVariant(invoice.status)}>{invoice.status}</Badge>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Button variant="outline" size="sm" onClick={() => handleEditInvoiceStatus(invoice)}>
+                          <Edit className="mr-1 h-3 w-3" /> Edit Status
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </ScrollArea>
+        </CardContent>
+      </Card>
+
+      {editingInvoice && (
+        <Dialog open={isEditDialogOpén} onOpenChange={setIsEditDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit Invoice: {editingInvoice.invoiceNumber}</DialogTitle>
+              <CardDescription>Update amount paid and status for this invoice.</CardDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="amountPaid" className="text-right col-span-1">Amount Paid</Label>
+                <Input id="amountPaid" type="number" value={editAmountPaid} onChange={e => setEditAmountPaid(e.target.value)} className="col-span-3" placeholder="0.00"/>
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="status" className="text-right col-span-1">Status</Label>
+                <Select value={editStatus} onValueChange={(value) => setEditStatus(value as Invoice['status'])} >
+                  <SelectTrigger className="col-span-3" id="status"> <SelectValue placeholder="Select status" /> </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Unpaid">Unpaid</SelectItem>
+                    <SelectItem value="Partially Paid">Partially Paid</SelectItem>
+                    <SelectItem value="Paid">Paid</SelectItem>
+                    <SelectItem value="Cancelled">Cancelled</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+               <p className="text-sm text-muted-foreground col-span-4 px-1">Note: Status will be auto-adjusted based on amount paid if not 'Cancelled'.</p>
+            </div>
+            <DialogFooter>
+              <DialogClose asChild><Button variant="outline"><XCircle className="mr-2 h-4 w-4"/>Cancel</Button></DialogClose>
+              <Button onClick={handleSaveInvoiceUpdate}><Save className="mr-2 h-4 w-4"/>Save Changes</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }
-
-    

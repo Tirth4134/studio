@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
-import type { InventoryItem, InvoiceLineItem, AppData, BuyerAddress, SalesRecord } from '@/types';
+import type { InventoryItem, InvoiceLineItem, AppData, BuyerAddress, SalesRecord, Invoice, BuyerProfile } from '@/types';
 import AppHeader from '@/components/layout/app-header';
 import InventorySection from '@/components/inventory/inventory-section';
 import InvoiceSection from '@/components/invoice/invoice-section';
@@ -19,9 +19,13 @@ import {
   saveInvoiceCounterToFirestore,
   saveBuyerAddressToAppSettings,
   saveAllAppSettingsToFirestore,
-  saveBuyerProfile, // New import
-  getBuyerProfileByGSTIN, // New import
-  saveSalesRecordsToFirestore 
+  saveBuyerProfile,
+  getBuyerProfileByGSTIN,
+  getBuyerProfilesByName, // New import
+  saveSalesRecordsToFirestore,
+  saveInvoiceToFirestore, 
+  getInvoicesFromFirestore,
+  updateInvoiceInFirestore
 } from '@/lib/firebase';
 
 const todayForSeed = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD
@@ -48,20 +52,32 @@ export default function HomePage() {
   const [invoiceItems, setInvoiceItems] = useState<InvoiceLineItem[]>([]);
   const [invoiceCounter, setInvoiceCounter] = useState<number>(1);
   const [buyerAddress, setBuyerAddress] = useState<BuyerAddress>(initialBuyerAddressGlobal);
-  
+  const [pastInvoices, setPastInvoices] = useState<Invoice[]>([]);
   const [activeSection, setActiveSection] = useState('inventory'); 
   const [invoiceDate, setInvoiceDate] = useState('');
   const [currentInvoiceNumber, setCurrentInvoiceNumber] = useState('');
   const [isShortcutsDialogOpen, setIsShortcutsDialogOpen] = useState(false);
   const { toast } = useToast();
   const [isClient, setIsClient] = useState(false);
-  const [isLoading, setIsLoading] = useState(true); // For general loading state
+  const [isLoading, setIsLoading] = useState(true);
+  const [searchedBuyerProfiles, setSearchedBuyerProfiles] = useState<BuyerProfile[]>([]);
+
 
   useEffect(() => {
     setIsClient(true);
     const today = new Date();
     setInvoiceDate(today.toLocaleDateString('en-CA')); 
   }, []);
+
+  const fetchPastInvoices = useCallback(async () => {
+    try {
+      const fetchedInvoices = await getInvoicesFromFirestore();
+      setPastInvoices(fetchedInvoices);
+    } catch (error: any) {
+      console.error("HomePage: Error fetching past invoices:", error);
+      toast({ title: "Error", description: `Could not fetch past invoices. ${error.message}`, variant: "destructive" });
+    }
+  }, [toast]);
 
   useEffect(() => {
     if (isClient) {
@@ -73,6 +89,7 @@ export default function HomePage() {
           console.log("HomePage: Fetched inventory from Firestore:", firestoreInventory);
           const appSettings = await getAppSettingsFromFirestore(initialBuyerAddressGlobal);
           console.log("HomePage: Fetched app settings from Firestore:", appSettings);
+          await fetchPastInvoices(); // Fetch past invoices as well
 
           if (firestoreInventory.length === 0 && appSettings.invoiceCounter === 1 && appSettings.buyerAddress.name === initialBuyerAddressGlobal.name) {
             toast({
@@ -102,7 +119,7 @@ export default function HomePage() {
           } else {
             setInventory(firestoreInventory);
             setInvoiceCounter(appSettings.invoiceCounter);
-            setBuyerAddress(appSettings.buyerAddress); // Use buyer address from settings
+            setBuyerAddress(appSettings.buyerAddress); 
              toast({
                 title: "Data Loaded",
                 description: "Successfully fetched data from Firestore.",
@@ -129,7 +146,7 @@ export default function HomePage() {
       fetchData();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isClient, toast]); 
+  }, [isClient, toast, fetchPastInvoices]); 
 
   useEffect(() => {
     setCurrentInvoiceNumber(generateInvoiceNumber(invoiceCounter));
@@ -142,7 +159,7 @@ export default function HomePage() {
 
   const updateCurrentBuyerAddress = async (newAddress: BuyerAddress) => {
     setBuyerAddress(newAddress);
-    await saveBuyerAddressToAppSettings(newAddress); // This saves it as the "default" for next new invoice
+    await saveBuyerAddressToAppSettings(newAddress); 
   };
   
   const updateInventory = async (newInventory: InventoryItem[] | ((prevState: InventoryItem[]) => InventoryItem[])) => {
@@ -178,8 +195,8 @@ export default function HomePage() {
       return;
     }
 
-    // Save buyer profile if GSTIN is valid and not a placeholder
-    if (buyerAddress.gstin && buyerAddress.gstin.trim() !== "" && !buyerAddress.gstin.includes("(Placeholder)")) {
+    const validGstin = buyerAddress.gstin && buyerAddress.gstin.trim() !== "" && !buyerAddress.gstin.includes("(Placeholder)");
+    if (validGstin) {
       try {
         await saveBuyerProfile(buyerAddress.gstin, buyerAddress);
         toast({ title: "Buyer Profile Saved", description: `Details for GSTIN ${buyerAddress.gstin} stored.`, variant: "default", duration: 3000});
@@ -222,17 +239,45 @@ export default function HomePage() {
         toast({ title: "Sales Record Error", description: `Could not save sales details for profit tracking. Error: ${(error as Error).message}`, variant: "destructive"});
       }
     }
+    
+    // Save the complete invoice
+    const subTotal = invoiceItems.reduce((sum, item) => sum + item.total, 0);
+    const GST_RATE = 0.18; // Centralize if used elsewhere
+    const taxAmount = subTotal * GST_RATE;
+    const grandTotal = subTotal + taxAmount;
+
+    const invoiceToSave: Invoice = {
+      invoiceNumber: currentInvoiceNumber,
+      invoiceDate: invoiceDate,
+      buyerGstin: buyerAddress.gstin, // Store GSTIN for linking if needed
+      buyerName: buyerAddress.name,
+      buyerAddress: buyerAddress,
+      items: invoiceItems,
+      subTotal: subTotal,
+      taxAmount: taxAmount,
+      grandTotal: grandTotal,
+      amountPaid: 0, // Initial state
+      status: 'Unpaid', // Initial state
+    };
+
+    try {
+      await saveInvoiceToFirestore(invoiceToSave);
+      toast({ title: "Invoice Saved", description: `Invoice ${currentInvoiceNumber} saved successfully.`, variant: "default" });
+      setPastInvoices(prev => [invoiceToSave, ...prev].sort((a, b) => new Date(b.invoiceDate).getTime() - new Date(a.invoiceDate).getTime() || b.invoiceNumber.localeCompare(a.invoiceNumber)));
+    } catch (error) {
+      console.error("Error saving invoice:", error);
+      toast({ title: "Invoice Save Error", description: `Could not save invoice ${currentInvoiceNumber}. Error: ${(error as Error).message}`, variant: "destructive"});
+    }
+
 
     window.print();
     updateInvoiceCounter(invoiceCounter + 1);
-    // Reset buyer address to global default for the *next* invoice, or keep if you want it to persist from the last saved default app setting.
-    // For now, let's reload the default app settings to get the buyer address, which might have been updated via saveBuyerAddressToAppSettings
     getAppSettingsFromFirestore(initialBuyerAddressGlobal).then(settings => setBuyerAddress(settings.buyerAddress));
 
 
   }, [invoiceItems, inventory, currentInvoiceNumber, invoiceDate, invoiceCounter, toast, buyerAddress]);
 
-  const lookupAndSetBuyerAddress = async (gstin: string) => {
+  const lookupBuyerByGstin = async (gstin: string) => {
     if (!gstin || gstin.trim() === "") {
       toast({ title: "Info", description: "GSTIN cannot be empty for lookup.", variant: "default" });
       return;
@@ -241,32 +286,32 @@ export default function HomePage() {
     try {
       const profile = await getBuyerProfileByGSTIN(gstin);
       if (profile) {
-        // Ensure all fields from BuyerAddress are present, with email as an empty string if null/undefined
         const completeProfile: BuyerAddress = {
             name: profile.name || '',
             addressLine1: profile.addressLine1 || '',
             addressLine2: profile.addressLine2 || '',
-            gstin: profile.gstin, // GSTIN from profile is the source of truth
+            gstin: profile.gstin, 
             stateNameAndCode: profile.stateNameAndCode || '',
             contact: profile.contact || '',
-            email: profile.email || '', // Ensure email is a string
+            email: profile.email || '', 
         };
         setBuyerAddress(completeProfile); 
-        await saveBuyerAddressToAppSettings(completeProfile); // Save as new default for current session
+        await saveBuyerAddressToAppSettings(completeProfile); 
         toast({ title: "Buyer Found", description: `Details for ${profile.name || 'Buyer'} loaded.`, variant: "default" });
+        setSearchedBuyerProfiles([]); // Clear name search results
       } else {
         toast({ title: "Buyer Not Found", description: "No existing profile for this GSTIN. Please enter details manually.", variant: "default" });
-        // Reset to a blank slate but keep the entered GSTIN
         setBuyerAddress(prev => ({
-          ...initialBuyerAddressGlobal, // Start with placeholders
-          gstin: gstin.trim().toUpperCase(), // Keep the entered GSTIN
-          name: '', // Clear other fields for manual entry
+          ...initialBuyerAddressGlobal, 
+          gstin: gstin.trim().toUpperCase(), 
+          name: '', 
           addressLine1: '',
           addressLine2: '',
           stateNameAndCode: '',
           contact: '',
           email: ''
         }));
+        setSearchedBuyerProfiles([]); // Clear name search results
       }
     } catch (error) {
       console.error("Error looking up buyer by GSTIN:", error);
@@ -275,6 +320,49 @@ export default function HomePage() {
       setIsLoading(false);
     }
   };
+
+  const lookupBuyerProfilesByName = async (nameQuery: string) => {
+    if (!nameQuery || nameQuery.trim() === "") {
+      toast({ title: "Info", description: "Company name cannot be empty for lookup.", variant: "default" });
+      setSearchedBuyerProfiles([]);
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const profiles = await getBuyerProfilesByName(nameQuery);
+      if (profiles.length > 0) {
+        setSearchedBuyerProfiles(profiles);
+        if (profiles.length === 1) { // If only one match, auto-select it
+          const singleProfile = profiles[0];
+           const completeProfile: BuyerAddress = {
+              name: singleProfile.name || '',
+              addressLine1: singleProfile.addressLine1 || '',
+              addressLine2: singleProfile.addressLine2 || '',
+              gstin: singleProfile.gstin, 
+              stateNameAndCode: singleProfile.stateNameAndCode || '',
+              contact: singleProfile.contact || '',
+              email: singleProfile.email || '', 
+          };
+          setBuyerAddress(completeProfile);
+          await saveBuyerAddressToAppSettings(completeProfile);
+          toast({ title: "Buyer Found", description: `Details for ${singleProfile.name} loaded.`, variant: "default" });
+          setSearchedBuyerProfiles([]); // Clear after auto-selection
+        } else {
+          toast({ title: "Multiple Buyers Found", description: `Found ${profiles.length} profiles. Please select one.`, variant: "default" });
+        }
+      } else {
+        setSearchedBuyerProfiles([]);
+        toast({ title: "No Buyers Found", description: "No profiles match this company name. Please enter details manually.", variant: "default" });
+      }
+    } catch (error) {
+      console.error("Error looking up buyer by name:", error);
+      toast({ title: "Lookup Error", description: `Could not fetch buyer details by name. Error: ${(error as Error).message}`, variant: "destructive" });
+      setSearchedBuyerProfiles([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
 
   const handleExportData = async () => {
     setIsLoading(true);
@@ -402,16 +490,15 @@ export default function HomePage() {
           if (typeof parsedData.invoiceCounter === 'number') importedInvoiceCounter = parsedData.invoiceCounter;
           if (typeof parsedData.buyerAddress === 'object' && parsedData.buyerAddress !== null) {
              const ba = parsedData.buyerAddress;
-             // Check for essential buyer address fields
              if (ba.name && ba.addressLine1 && ba.gstin && ba.stateNameAndCode && ba.contact) {
                 importedBuyerAddress = {
                     name: ba.name,
                     addressLine1: ba.addressLine1,
-                    addressLine2: ba.addressLine2 || '', // Default if missing
+                    addressLine2: ba.addressLine2 || '', 
                     gstin: ba.gstin,
                     stateNameAndCode: ba.stateNameAndCode,
                     contact: ba.contact,
-                    email: ba.email || '', // Default if missing
+                    email: ba.email || '', 
                 };
              } else {
                 toast({ title: "Warning", description: "Buyer address in file is incomplete, skipping.", variant: "default"});
@@ -478,8 +565,8 @@ export default function HomePage() {
           setInvoiceCounter(importedInvoiceCounter);
         }
         if (importedBuyerAddress) {
-          await saveBuyerAddressToAppSettings(importedBuyerAddress); // This updates the 'default' buyer address in settings
-          setBuyerAddress(importedBuyerAddress); // Also update current buyerAddress state
+          await saveBuyerAddressToAppSettings(importedBuyerAddress); 
+          setBuyerAddress(importedBuyerAddress); 
         }
         
         setInvoiceItems([]); 
@@ -525,13 +612,19 @@ export default function HomePage() {
         setInventory(updatedInventoryForFirestore);
         
         setInvoiceItems([]); 
-        // Restore buyer address to the one stored in app settings (which is the last "default" or looked-up one)
         getAppSettingsFromFirestore(initialBuyerAddressGlobal).then(settings => setBuyerAddress(settings.buyerAddress));
         toast({ title: "New Invoice", description: "Current invoice cleared and stock restored." });
     } else {
         toast({ title: "New Invoice", description: "Invoice is already empty.", variant: "default" });
     }
   }, [invoiceItems, toast, setInventory]);
+
+  const handleInvoiceUpdate = (updatedInvoice: Invoice) => {
+    setPastInvoices(prev => 
+      prev.map(inv => inv.invoiceNumber === updatedInvoice.invoiceNumber ? updatedInvoice : inv)
+        .sort((a, b) => new Date(b.invoiceDate).getTime() - new Date(a.invoiceDate).getTime() || b.invoiceNumber.localeCompare(a.invoiceNumber))
+    );
+  };
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -584,12 +677,20 @@ export default function HomePage() {
             invoiceDate={invoiceDate}
             onPrintInvoice={handlePrintInvoice}
             buyerAddress={buyerAddress}
-            setBuyerAddress={updateCurrentBuyerAddress} // This now updates the "default" address in settings
-            onLookupBuyerByGSTIN={lookupAndSetBuyerAddress} // Pass down the lookup function
+            setBuyerAddress={setBuyerAddress} 
+            onLookupBuyerByGSTIN={lookupBuyerByGstin}
+            onLookupBuyerByName={lookupBuyerProfilesByName}
+            searchedBuyerProfiles={searchedBuyerProfiles}
+            clearSearchedBuyerProfiles={() => setSearchedBuyerProfiles([])}
           />
         )}
         {activeSection === 'reports' && (
-          <ReportsSection />
+          <ReportsSection 
+            pastInvoices={pastInvoices}
+            onInvoiceUpdate={handleInvoiceUpdate} 
+            isLoading={isLoading}
+            fetchPastInvoices={fetchPastInvoices}
+          />
         )}
       </main>
       <footer className="text-center p-4 text-muted-foreground text-sm no-print">

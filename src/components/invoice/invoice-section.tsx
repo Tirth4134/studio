@@ -1,7 +1,7 @@
 
 "use client";
 
-import type { InventoryItem, InvoiceLineItem, BuyerAddress } from '@/types';
+import type { InventoryItem, InvoiceLineItem, BuyerAddress, BuyerProfile } from '@/types';
 import CreateInvoiceForm from './create-invoice-form';
 import InvoicePreview from './invoice-preview';
 import { useToast } from '@/hooks/use-toast';
@@ -18,6 +18,9 @@ interface InvoiceSectionProps {
   buyerAddress: BuyerAddress;
   setBuyerAddress: (addressOrUpdater: BuyerAddress | ((prevState: BuyerAddress) => BuyerAddress)) => Promise<void> | void;
   onLookupBuyerByGSTIN: (gstin: string) => Promise<void>;
+  onLookupBuyerByName: (nameQuery: string) => Promise<void>;
+  searchedBuyerProfiles: BuyerProfile[];
+  clearSearchedBuyerProfiles: () => void;
 }
 
 export default function InvoiceSection({
@@ -31,6 +34,9 @@ export default function InvoiceSection({
   buyerAddress,
   setBuyerAddress,
   onLookupBuyerByGSTIN,
+  onLookupBuyerByName,
+  searchedBuyerProfiles,
+  clearSearchedBuyerProfiles,
 }: InvoiceSectionProps) {
   const { toast } = useToast();
 
@@ -91,7 +97,6 @@ export default function InvoiceSection({
         stockToRestore[item.id] = (stockToRestore[item.id] || 0) + item.quantity;
     });
 
-    // Using the functional update form of setInventory which is expected by page.tsx
     setInventory(prevInventory => 
       prevInventory.map(invItem => {
         if (stockToRestore[invItem.id]) {
@@ -102,7 +107,6 @@ export default function InvoiceSection({
     );
     
     setInvoiceItems([]);
-    // Buyer address reset/management is now primarily handled by page.tsx after print/clear actions
     toast({ title: "Success", description: "Invoice cleared and stock restored." });
   };
 
@@ -112,8 +116,11 @@ export default function InvoiceSection({
         inventory={inventory}
         onAddItemToInvoice={handleAddItemToInvoice}
         buyerAddress={buyerAddress}
-        setBuyerAddress={setBuyerAddress} // Pass down the state setter
+        setBuyerAddress={setBuyerAddress}
         onLookupBuyerByGSTIN={onLookupBuyerByGSTIN}
+        onLookupBuyerByName={onLookupBuyerByName}
+        searchedBuyerProfiles={searchedBuyerProfiles}
+        clearSearchedBuyerProfiles={clearSearchedBuyerProfiles}
       />
       <InvoicePreview
         invoiceItems={invoiceItems}

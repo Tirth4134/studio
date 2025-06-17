@@ -1,6 +1,6 @@
 
 import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
-import { getFirestore, collection, doc, getDoc, setDoc, getDocs, writeBatch, deleteDoc } from "firebase/firestore";
+import { getFirestore, collection, doc, getDoc, setDoc, getDocs, writeBatch, deleteDoc, query, where, orderBy, limit } from "firebase/firestore";
 import { 
   getAuth, 
   signInWithEmailAndPassword, 
@@ -11,7 +11,7 @@ import {
   sendPasswordResetEmail,
   type User
 } from "firebase/auth";
-import type { InventoryItem, BuyerAddress, BuyerProfile, AppSettings as AppSettingsType, SalesRecord } from '@/types';
+import type { InventoryItem, BuyerAddress, BuyerProfile, AppSettings as AppSettingsType, SalesRecord, Invoice } from '@/types';
 
 // Firebase configuration
 const firebaseConfig = {
@@ -179,6 +179,7 @@ export const deleteInventoryItemFromFirestore = async (itemId: string): Promise<
 const settingsDocRef = doc(db, "settings", "appState");
 const buyerProfilesCollectionRef = collection(db, "buyerProfiles");
 const salesRecordsCollectionRef = collection(db, "salesRecords");
+const invoicesCollectionRef = collection(db, "invoices");
 
 
 // --- Settings Functions ---
@@ -238,7 +239,7 @@ export const saveAllAppSettingsToFirestore = async (settings: AppSettingsType): 
     const settingsToSave = {
       ...settings,
       buyerAddress: {
-        ...(settings.buyerAddress || {}), // Provide a default empty object if buyerAddress is undefined
+        ...(settings.buyerAddress || {}), 
         email: settings.buyerAddress?.email || ''
       }
     };
@@ -253,11 +254,11 @@ export const saveAllAppSettingsToFirestore = async (settings: AppSettingsType): 
 export const getBuyerProfileByGSTIN = async (gstin: string): Promise<BuyerProfile | null> => {
   if (!gstin || gstin.trim() === "") return null;
   try {
-    const profileDocRef = doc(buyerProfilesCollectionRef, gstin.trim().toUpperCase()); // Standardize GSTIN
+    const profileDocRef = doc(buyerProfilesCollectionRef, gstin.trim().toUpperCase()); 
     const docSnap = await getDoc(profileDocRef);
     if (docSnap.exists()) {
       const data = docSnap.data() as BuyerProfile;
-      return { ...data, email: data.email || '' }; // Ensure email is string
+      return { ...data, email: data.email || '' }; 
     }
     return null;
   } catch (error) {
@@ -266,23 +267,61 @@ export const getBuyerProfileByGSTIN = async (gstin: string): Promise<BuyerProfil
   }
 };
 
-export const saveBuyerProfile = async (gstin: string, address: BuyerAddress): Promise<void> => {
-  if (!gstin || gstin.trim() === "") return;
+export const getBuyerProfilesByName = async (nameQuery: string): Promise<BuyerProfile[]> => {
+  if (!nameQuery || nameQuery.trim() === "") return [];
   try {
-    const profileDocRef = doc(buyerProfilesCollectionRef, gstin.trim().toUpperCase()); // Standardize GSTIN
-    // Ensure all fields from BuyerAddress are present, with email being optional but defaulting to empty string
+    const standardizedQuery = nameQuery.trim();
+    const q = query(
+      buyerProfilesCollectionRef,
+      where("name", ">=", standardizedQuery),
+      where("name", "<=", standardizedQuery + '\uf8ff'), // '\uf8ff' is a high Unicode character
+      limit(10) // Limit results for performance
+    );
+    const querySnapshot = await getDocs(q);
+    const profiles: BuyerProfile[] = [];
+    querySnapshot.forEach((docSnap) => {
+      const data = docSnap.data() as BuyerProfile;
+      profiles.push({ ...data, email: data.email || '' });
+    });
+    return profiles;
+  } catch (error) {
+    console.error(`Error fetching buyer profiles by name "${nameQuery}":`, error);
+    // It's better to return empty array or throw, rather than returning null for an array type
+    return []; 
+  }
+};
+
+
+export const saveBuyerProfile = async (gstin: string, address: BuyerAddress): Promise<void> => {
+  // GSTIN can be empty if saving a profile that doesn't have one (e.g. retail customer)
+  // However, if a GSTIN is provided, it should be the document ID.
+  // If no GSTIN, we might need another unique ID or decide not to save such profiles this way.
+  // For now, we'll assume if gstin is present, it's the ID. If not, we might skip saving or use name as a less unique key.
+  // Let's enforce that GSTIN is used as the ID if present and non-empty.
+  
+  const idToUse = gstin && gstin.trim() !== "" && !gstin.includes("(Placeholder)") 
+                  ? gstin.trim().toUpperCase() 
+                  : null;
+
+  if (!idToUse) {
+    console.log("Buyer profile not saved: No valid GSTIN provided to use as document ID.");
+    return; // Or handle differently, e.g., generate a unique ID if GSTIN is not the primary key
+  }
+
+  try {
+    const profileDocRef = doc(buyerProfilesCollectionRef, idToUse);
     const profileData: BuyerProfile = {
       name: address.name || '',
       addressLine1: address.addressLine1 || '',
       addressLine2: address.addressLine2 || '',
-      gstin: address.gstin.trim().toUpperCase(), // Save standardized GSTIN
+      gstin: idToUse, // Ensure the standardized GSTIN is part of the saved data
       stateNameAndCode: address.stateNameAndCode || '',
       contact: address.contact || '',
-      email: address.email || '', // Ensure email is always a string
+      email: address.email || '', 
     };
-    await setDoc(profileDocRef, profileData, { merge: true }); // Use merge to update existing or create new
+    await setDoc(profileDocRef, profileData, { merge: true }); 
   } catch (error) {
-    console.error(`Error saving buyer profile for GSTIN ${gstin} to Firestore:`, error);
+    console.error(`Error saving buyer profile for GSTIN ${idToUse} to Firestore:`, error);
     throw error;
   }
 };
@@ -316,6 +355,45 @@ export const getSalesRecordsFromFirestore = async (): Promise<SalesRecord[]> => 
     return records;
   } catch (error) {
     console.error("Error fetching sales records from Firestore:", error);
+    // Return empty array on error to prevent app crash, error is logged.
+    return [];
+  }
+};
+
+
+// --- Invoice Storage ---
+export const saveInvoiceToFirestore = async (invoice: Invoice): Promise<void> => {
+  try {
+    const invoiceDocRef = doc(invoicesCollectionRef, invoice.invoiceNumber);
+    await setDoc(invoiceDocRef, invoice);
+  } catch (error) {
+    console.error(`Error saving invoice ${invoice.invoiceNumber} to Firestore:`, error);
+    throw error;
+  }
+};
+
+export const getInvoicesFromFirestore = async (): Promise<Invoice[]> => {
+  try {
+    const q = query(invoicesCollectionRef, orderBy("invoiceDate", "desc"), orderBy("invoiceNumber", "desc"));
+    const querySnapshot = await getDocs(q);
+    const invoices: Invoice[] = [];
+    querySnapshot.forEach((docSnap) => {
+      invoices.push(docSnap.data() as Invoice);
+    });
+    return invoices;
+  } catch (error) {
+    console.error("Error fetching invoices from Firestore:", error);
+    // Return empty array on error, error is logged.
+    return [];
+  }
+};
+
+export const updateInvoiceInFirestore = async (invoiceNumber: string, updates: Partial<Invoice>): Promise<void> => {
+  try {
+    const invoiceDocRef = doc(invoicesCollectionRef, invoiceNumber);
+    await setDoc(invoiceDocRef, updates, { merge: true });
+  } catch (error) {
+    console.error(`Error updating invoice ${invoiceNumber} in Firestore:`, error);
     throw error;
   }
 };
