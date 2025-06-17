@@ -11,7 +11,7 @@ import {
   sendPasswordResetEmail,
   type User
 } from "firebase/auth";
-import type { InventoryItem, BuyerAddress, BuyerProfile, AppSettings as AppSettingsType, SalesRecord, Invoice, InvoiceLineItem, DirectSaleLogEntry } from '@/types';
+import type { InventoryItem, BuyerAddress, BuyerProfile, AppSettings as AppSettingsType, SalesRecord, Invoice, InvoiceLineItem, DirectSaleLogEntry, DirectSaleItemDetail } from '@/types';
 
 // Firebase configuration
 const firebaseConfig = {
@@ -224,13 +224,13 @@ export const getAppSettingsFromFirestore = async (initialGlobalBuyerAddress: Buy
       };
       return {
         invoiceCounter: data.invoiceCounter || 1,
-        directSaleCounter: data.directSaleCounter || 1, // Initialize directSaleCounter
+        directSaleCounter: data.directSaleCounter || 1,
         buyerAddress: mergedBuyerAddress
       };
     } else {
       const defaultSettings: AppSettingsType = {
         invoiceCounter: 1,
-        directSaleCounter: 1, // Default directSaleCounter
+        directSaleCounter: 1,
         buyerAddress: {...initialGlobalBuyerAddress, email: initialGlobalBuyerAddress.email || '', addressLine2: initialGlobalBuyerAddress.addressLine2 || ''},
       };
       await setDoc(settingsDocRef, defaultSettings);
@@ -408,42 +408,55 @@ export const getSalesRecordsFromFirestore = async (): Promise<SalesRecord[]> => 
 export const saveInvoiceToFirestore = async (invoice: Invoice): Promise<void> => {
   console.log("[Firebase] saveInvoiceToFirestore called with invoice number:", invoice.invoiceNumber);
   try {
-    const invoiceDocRef = doc(invoicesCollectionRef, invoice.invoiceNumber);
+    // Ensure invoiceNumber is always a string
+    const finalInvoiceNumber = invoice.invoiceNumber && typeof invoice.invoiceNumber === 'string' 
+                                ? invoice.invoiceNumber 
+                                : `INV-ERR-${Date.now()}`;
+    if (finalInvoiceNumber !== invoice.invoiceNumber) {
+        console.warn(`[Firebase] Corrected invoice number from '${invoice.invoiceNumber}' to '${finalInvoiceNumber}' before saving.`);
+    }
+
+    const invoiceDocRef = doc(invoicesCollectionRef, finalInvoiceNumber);
 
     const itemsToSave: InvoiceLineItem[] = (invoice.items || []).map(item => ({
       ...item,
+      id: item.id || `item-ERR-${Date.now()}-${Math.random().toString(36).substring(2)}`,
+      name: item.name || "Unknown Item",
+      price: typeof item.price === 'number' ? item.price : 0,
+      quantity: typeof item.quantity === 'number' ? item.quantity : 0,
+      total: typeof item.total === 'number' ? item.total : 0,
       hsnSac: item.hsnSac || '',
       gstRate: item.gstRate === undefined || item.gstRate === null ? 0 : Number(item.gstRate),
     }));
 
     const sanitizedBuyerAddress: BuyerAddress = {
-      name: invoice.buyerAddress?.name || '',
-      addressLine1: invoice.buyerAddress?.addressLine1 || '',
+      name: invoice.buyerAddress?.name || 'N/A',
+      addressLine1: invoice.buyerAddress?.addressLine1 || 'N/A',
       addressLine2: invoice.buyerAddress?.addressLine2 || '',
-      gstin: invoice.buyerAddress?.gstin || '',
-      stateNameAndCode: invoice.buyerAddress?.stateNameAndCode || '',
-      contact: invoice.buyerAddress?.contact || '',
+      gstin: invoice.buyerAddress?.gstin || 'N/A',
+      stateNameAndCode: invoice.buyerAddress?.stateNameAndCode || 'N/A',
+      contact: invoice.buyerAddress?.contact || 'N/A',
       email: invoice.buyerAddress?.email || '',
     };
 
     const invoiceDataToSave: Invoice = {
       ...invoice,
-      items: itemsToSave,
-      buyerAddress: sanitizedBuyerAddress,
-      latestPaymentDate: invoice.latestPaymentDate === undefined ? null : (invoice.latestPaymentDate === '' ? null : invoice.latestPaymentDate),
-      invoiceNumber: invoice.invoiceNumber || `INV-ERR-${Date.now()}`,
-      invoiceDate: invoice.invoiceDate || new Date().toLocaleDateString('en-CA'),
+      invoiceNumber: finalInvoiceNumber,
+      invoiceDate: (invoice.invoiceDate && typeof invoice.invoiceDate === 'string') ? invoice.invoiceDate : new Date().toLocaleDateString('en-CA'),
       buyerGstin: invoice.buyerGstin || '',
       buyerName: invoice.buyerName || '',
+      buyerAddress: sanitizedBuyerAddress,
+      items: itemsToSave,
       subTotal: typeof invoice.subTotal === 'number' ? invoice.subTotal : 0,
       taxAmount: typeof invoice.taxAmount === 'number' ? invoice.taxAmount : 0,
       grandTotal: typeof invoice.grandTotal === 'number' ? invoice.grandTotal : 0,
       amountPaid: typeof invoice.amountPaid === 'number' ? invoice.amountPaid : 0,
       status: invoice.status || 'Unpaid',
+      latestPaymentDate: invoice.latestPaymentDate === undefined ? null : (invoice.latestPaymentDate === '' ? null : invoice.latestPaymentDate),
     };
 
     await setDoc(invoiceDocRef, invoiceDataToSave);
-    console.log("[Firebase] Invoice successfully saved to Firestore:", invoice.invoiceNumber);
+    console.log("[Firebase] Invoice successfully saved to Firestore:", finalInvoiceNumber);
   } catch (error) {
     console.error(`[Firebase] Error saving invoice ${invoice.invoiceNumber} to Firestore:`, error);
     throw error;
@@ -458,20 +471,24 @@ export const getInvoicesFromFirestore = async (): Promise<Invoice[]> => {
     const invoices: Invoice[] = [];
     querySnapshot.forEach((docSnap) => {
       const data = docSnap.data();
-      // console.log(`[Firebase] Raw invoice data for ${docSnap.id}:`, data);
+      console.log(`[Firebase] Raw invoice data for doc ID ${docSnap.id}:`, data);
 
-      if (!data.invoiceNumber || typeof data.invoiceNumber !== 'string') {
-        console.warn(`[Firebase] Invoice document ${docSnap.id} missing or invalid invoiceNumber. Skipping.`);
-        return;
-      }
-      if (!data.invoiceDate || typeof data.invoiceDate !== 'string') {
-        console.warn(`[Firebase] Invoice document ${docSnap.id} missing or invalid invoiceDate. Using fallback.`, data.invoiceDate);
-        data.invoiceDate = new Date().toLocaleDateString('en-CA');
+      const finalInvoiceNumber = data.invoiceNumber && typeof data.invoiceNumber === 'string' 
+                                 ? data.invoiceNumber 
+                                 : `ERR-INV-${docSnap.id}`;
+      if (finalInvoiceNumber !== data.invoiceNumber) {
+          console.warn(`[Firebase] Document ID ${docSnap.id} has invalid/missing invoiceNumber ('${data.invoiceNumber}'). Using fallback: '${finalInvoiceNumber}'.`);
       }
 
-
-      const items = (data.items || []).map((item: any) => ({
-        id: item.id || `item-${Date.now()}`,
+      const finalInvoiceDate = data.invoiceDate && typeof data.invoiceDate === 'string'
+                               ? data.invoiceDate
+                               : new Date().toLocaleDateString('en-CA');
+      if (finalInvoiceDate !== data.invoiceDate) {
+          console.warn(`[Firebase] Document ID ${docSnap.id} (Inv# ${finalInvoiceNumber}) has invalid/missing invoiceDate ('${data.invoiceDate}'). Using fallback: '${finalInvoiceDate}'.`);
+      }
+      
+      const items = (data.items || []).map((item: any, index: number) => ({
+        id: item.id || `item-ERR-${docSnap.id}-${index}`,
         name: item.name || "N/A",
         price: typeof item.price === 'number' ? item.price : 0,
         quantity: typeof item.quantity === 'number' ? item.quantity : 0,
@@ -481,18 +498,18 @@ export const getInvoicesFromFirestore = async (): Promise<Invoice[]> => {
       }));
 
       const buyerAddress: BuyerAddress = {
-        name: data.buyerAddress?.name || '',
-        addressLine1: data.buyerAddress?.addressLine1 || '',
-        addressLine2: data.buyerAddress?.addressLine2 || '',
-        gstin: data.buyerAddress?.gstin || '',
-        stateNameAndCode: data.buyerAddress?.stateNameAndCode || '',
-        contact: data.buyerAddress?.contact || '',
-        email: data.buyerAddress?.email || '',
+        name: data.buyerAddress?.name || 'N/A',
+        addressLine1: data.buyerAddress?.addressLine1 || 'N/A',
+        addressLine2: data.buyerAddress?.addressLine2 || '', // Can be empty
+        gstin: data.buyerAddress?.gstin || 'N/A',
+        stateNameAndCode: data.buyerAddress?.stateNameAndCode || 'N/A',
+        contact: data.buyerAddress?.contact || 'N/A',
+        email: data.buyerAddress?.email || '', // Can be empty
       };
 
       invoices.push({
-        invoiceNumber: data.invoiceNumber,
-        invoiceDate: data.invoiceDate,
+        invoiceNumber: finalInvoiceNumber,
+        invoiceDate: finalInvoiceDate,
         buyerGstin: data.buyerGstin || '',
         buyerName: data.buyerName || '',
         buyerAddress,
@@ -502,7 +519,7 @@ export const getInvoicesFromFirestore = async (): Promise<Invoice[]> => {
         grandTotal: typeof data.grandTotal === 'number' ? data.grandTotal : 0,
         amountPaid: typeof data.amountPaid === 'number' ? data.amountPaid : 0,
         status: data.status || 'Unpaid',
-        latestPaymentDate: data.latestPaymentDate === null ? undefined : (data.latestPaymentDate === '' ? undefined : data.latestPaymentDate),
+        latestPaymentDate: data.latestPaymentDate === null || data.latestPaymentDate === undefined || data.latestPaymentDate === '' ? undefined : data.latestPaymentDate,
       } as Invoice);
     });
 
@@ -539,18 +556,59 @@ export const updateInvoiceInFirestore = async (invoiceNumber: string, updates: P
     if (updates.hasOwnProperty('latestPaymentDate')) {
       updatesToApply.latestPaymentDate = updates.latestPaymentDate === undefined ? null : (updates.latestPaymentDate === '' ? null : updates.latestPaymentDate) ;
     }
+    
+    // Handle status update specifically to ensure 'Paid' status is set if grandTotal equals amountPaid
+    if (updates.hasOwnProperty('amountPaid') || updates.hasOwnProperty('status') || updates.hasOwnProperty('grandTotal')) {
+        const currentDoc = await getDoc(invoiceDocRef);
+        const currentData = currentDoc.exists() ? currentDoc.data() as Invoice : {};
+        
+        const newAmountPaid = updates.hasOwnProperty('amountPaid') ? (updates.amountPaid ?? currentData.amountPaid ?? 0) : (currentData.amountPaid ?? 0);
+        const grandTotal = updates.hasOwnProperty('grandTotal') ? (updates.grandTotal ?? currentData.grandTotal ?? 0) : (currentData.grandTotal ?? 0);
+        let newStatus = updates.status ?? currentData.status ?? 'Unpaid';
+
+        if (newStatus !== 'Cancelled') {
+            const epsilon = 0.01; // For floating point comparison
+            if (Math.abs(newAmountPaid - grandTotal) < epsilon && grandTotal > 0) {
+                newStatus = 'Paid';
+            } else if (newAmountPaid > 0 && newAmountPaid < grandTotal - epsilon) {
+                newStatus = 'Partially Paid';
+            } else if (newAmountPaid <= 0 && newStatus !== 'Paid') { // if explicitly set to paid and amount is 0, keep paid
+                 newStatus = 'Unpaid';
+            } else if (newAmountPaid >= grandTotal - epsilon) { // handles overpayment as Paid
+                 newStatus = 'Paid';
+            }
+        }
+        updatesToApply.status = newStatus;
+    }
+
 
     for (const key in updates) {
       if (updates.hasOwnProperty(key) && !updatesToApply.hasOwnProperty(key)) {
         (updatesToApply as any)[key] = (updates as any)[key];
-        if ((updatesToApply as any)[key] === undefined) {
-            (updatesToApply as any)[key] = null;
+        if ((updatesToApply as any)[key] === undefined && key !== 'latestPaymentDate') { // allow latestPaymentDate to be nullified
+            (updatesToApply as any)[key] = deleteField(); // Use deleteField for undefined values to remove them
+        } else if ((updatesToApply as any)[key] === undefined && key === 'latestPaymentDate'){
+             (updatesToApply as any)[key] = null;
         }
       }
     }
+    
+    // Ensure required fields like invoiceDate and invoiceNumber are not accidentally deleted
+    if (!updatesToApply.invoiceDate && !updates.invoiceDate) {
+        const currentDoc = await getDoc(invoiceDocRef);
+        if (currentDoc.exists() && currentDoc.data().invoiceDate) {
+            updatesToApply.invoiceDate = currentDoc.data().invoiceDate;
+        } else {
+            updatesToApply.invoiceDate = new Date().toLocaleDateString('en-CA'); // Fallback if not in updates and not in doc
+        }
+    }
+     if (!updatesToApply.invoiceNumber && !updates.invoiceNumber) {
+        updatesToApply.invoiceNumber = invoiceNumber; // Ensure invoiceNumber is always present
+    }
+
 
     await setDoc(invoiceDocRef, updatesToApply, { merge: true });
-    console.log(`[Firebase] Invoice ${invoiceNumber} updated successfully.`);
+    console.log(`[Firebase] Invoice ${invoiceNumber} updated successfully with:`, updatesToApply);
   } catch (error) {
     console.error(`[Firebase] Error updating invoice ${invoiceNumber} in Firestore:`, error);
     throw error;
@@ -561,9 +619,38 @@ export const updateInvoiceInFirestore = async (invoiceNumber: string, updates: P
 export const saveDirectSaleLogEntryToFirestore = async (entry: DirectSaleLogEntry): Promise<void> => {
   console.log("[Firebase] saveDirectSaleLogEntryToFirestore called with DS number:", entry.directSaleNumber);
   try {
-    const saleDocRef = doc(directSalesLogCollectionRef, entry.directSaleNumber);
-    await setDoc(saleDocRef, entry);
-    console.log("[Firebase] Direct Sale Log Entry successfully saved:", entry.directSaleNumber);
+    const finalDirectSaleNumber = entry.directSaleNumber && typeof entry.directSaleNumber === 'string'
+                                 ? entry.directSaleNumber
+                                 : `DS-ERR-${Date.now()}`;
+    if (finalDirectSaleNumber !== entry.directSaleNumber) {
+        console.warn(`[Firebase] Corrected directSaleNumber from '${entry.directSaleNumber}' to '${finalDirectSaleNumber}' before saving direct sale log.`);
+    }
+    const saleDocRef = doc(directSalesLogCollectionRef, finalDirectSaleNumber);
+    
+    const itemsToSave: DirectSaleItemDetail[] = (entry.items || []).map(item => ({
+        ...item,
+        itemId: item.itemId || `item-ERR-DS-${Date.now()}-${Math.random().toString(36).substring(2)}`,
+        itemName: item.itemName || "Unknown Item",
+        category: item.category || "Uncategorized",
+        quantitySold: typeof item.quantitySold === 'number' ? item.quantitySold : 0,
+        sellingPricePerUnit: typeof item.sellingPricePerUnit === 'number' ? item.sellingPricePerUnit : 0,
+        buyingPricePerUnit: typeof item.buyingPricePerUnit === 'number' ? item.buyingPricePerUnit : 0,
+        totalItemProfit: typeof item.totalItemProfit === 'number' ? item.totalItemProfit : 0,
+        totalItemPrice: typeof item.totalItemPrice === 'number' ? item.totalItemPrice : 0,
+    }));
+
+    const entryToSave: DirectSaleLogEntry = {
+        ...entry,
+        id: finalDirectSaleNumber, // Ensure ID matches the doc ID
+        directSaleNumber: finalDirectSaleNumber,
+        saleDate: (entry.saleDate && typeof entry.saleDate === 'string') ? entry.saleDate : new Date().toLocaleDateString('en-CA'),
+        items: itemsToSave,
+        grandTotalSaleAmount: typeof entry.grandTotalSaleAmount === 'number' ? entry.grandTotalSaleAmount : 0,
+        totalSaleProfit: typeof entry.totalSaleProfit === 'number' ? entry.totalSaleProfit : 0,
+    };
+
+    await setDoc(saleDocRef, entryToSave);
+    console.log("[Firebase] Direct Sale Log Entry successfully saved:", finalDirectSaleNumber);
   } catch (error) {
     console.error(`[Firebase] Error saving Direct Sale Log Entry ${entry.directSaleNumber} to Firestore:`, error);
     throw error;
@@ -578,11 +665,33 @@ export const getDirectSaleLogEntriesFromFirestore = async (): Promise<DirectSale
     const entries: DirectSaleLogEntry[] = [];
     querySnapshot.forEach((docSnap) => {
       const data = docSnap.data();
+      const finalDirectSaleNumber = data.directSaleNumber && typeof data.directSaleNumber === 'string'
+                                 ? data.directSaleNumber
+                                 : `ERR-DS-${docSnap.id}`;
+      if (finalDirectSaleNumber !== data.directSaleNumber) {
+          console.warn(`[Firebase] Direct Sale Log ${docSnap.id} has invalid/missing directSaleNumber ('${data.directSaleNumber}'). Using fallback: '${finalDirectSaleNumber}'.`);
+      }
+      const finalSaleDate = data.saleDate && typeof data.saleDate === 'string'
+                            ? data.saleDate
+                            : new Date().toLocaleDateString('en-CA');
+       if (finalSaleDate !== data.saleDate) {
+          console.warn(`[Firebase] Direct Sale Log ${docSnap.id} (DS# ${finalDirectSaleNumber}) has invalid/missing saleDate ('${data.saleDate}'). Using fallback: '${finalSaleDate}'.`);
+      }
+
       entries.push({
-        id: docSnap.id, // or data.id if you store it redundantly
-        directSaleNumber: data.directSaleNumber || "DS-ERR",
-        saleDate: data.saleDate || new Date().toLocaleDateString('en-CA'),
-        items: data.items || [],
+        id: docSnap.id,
+        directSaleNumber: finalDirectSaleNumber,
+        saleDate: finalSaleDate,
+        items: (data.items || []).map((item: any, index: number) => ({
+            itemId: item.itemId || `item-ERR-DS-${docSnap.id}-${index}`,
+            itemName: item.itemName || "N/A",
+            category: item.category || "Uncategorized",
+            quantitySold: typeof item.quantitySold === 'number' ? item.quantitySold : 0,
+            sellingPricePerUnit: typeof item.sellingPricePerUnit === 'number' ? item.sellingPricePerUnit : 0,
+            buyingPricePerUnit: typeof item.buyingPricePerUnit === 'number' ? item.buyingPricePerUnit : 0,
+            totalItemProfit: typeof item.totalItemProfit === 'number' ? item.totalItemProfit : 0,
+            totalItemPrice: typeof item.totalItemPrice === 'number' ? item.totalItemPrice : 0,
+        })),
         grandTotalSaleAmount: typeof data.grandTotalSaleAmount === 'number' ? data.grandTotalSaleAmount : 0,
         totalSaleProfit: typeof data.totalSaleProfit === 'number' ? data.totalSaleProfit : 0,
       } as DirectSaleLogEntry);
@@ -597,4 +706,6 @@ export const getDirectSaleLogEntriesFromFirestore = async (): Promise<DirectSale
 
 
 export { db, auth, User };
-export type { InventoryItem, BuyerAddress, BuyerProfile, AppSettingsType, SalesRecord, Invoice, InvoiceLineItem, DirectSaleLogEntry };
+export type { InventoryItem, BuyerAddress, BuyerProfile, AppSettingsType, SalesRecord, Invoice, InvoiceLineItem, DirectSaleLogEntry, DirectSaleItemDetail };
+
+    
