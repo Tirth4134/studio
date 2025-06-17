@@ -104,9 +104,13 @@ export const getInventoryFromFirestore = async (): Promise<InventoryItem[]> => {
       const data = docSnap.data();
       items.push({
         id: docSnap.id,
-        ...data,
+        name: data.name || "Unnamed Item",
+        category: data.category || "Uncategorized",
+        buyingPrice: typeof data.buyingPrice === 'number' ? data.buyingPrice : 0,
+        price: typeof data.price === 'number' ? data.price : 0, // Selling price
+        stock: typeof data.stock === 'number' ? data.stock : 0,
         description: data.description || '',
-        purchaseDate: data.purchaseDate || new Date().toLocaleDateString('en-CA'),
+        purchaseDate: typeof data.purchaseDate === 'string' ? data.purchaseDate : new Date().toLocaleDateString('en-CA'),
         hsnSac: data.hsnSac || '',
         gstRate: data.gstRate === undefined || data.gstRate === null ? 0 : Number(data.gstRate)
       } as InventoryItem);
@@ -364,7 +368,19 @@ export const getSalesRecordsFromFirestore = async (): Promise<SalesRecord[]> => 
     const querySnapshot = await getDocs(salesRecordsCollectionRef);
     const records: SalesRecord[] = [];
     querySnapshot.forEach((docSnap) => {
-      records.push(docSnap.data() as SalesRecord);
+      const data = docSnap.data();
+      records.push({
+        id: docSnap.id,
+        invoiceNumber: data.invoiceNumber || "N/A",
+        saleDate: typeof data.saleDate === 'string' ? data.saleDate : new Date().toLocaleDateString('en-CA'),
+        itemId: data.itemId || "N/A",
+        itemName: data.itemName || "N/A",
+        category: data.category || "N/A",
+        quantitySold: typeof data.quantitySold === 'number' ? data.quantitySold : 0,
+        sellingPricePerUnit: typeof data.sellingPricePerUnit === 'number' ? data.sellingPricePerUnit : 0,
+        buyingPricePerUnit: typeof data.buyingPricePerUnit === 'number' ? data.buyingPricePerUnit : 0,
+        totalProfit: typeof data.totalProfit === 'number' ? data.totalProfit : 0,
+      } as SalesRecord);
     });
     return records;
   } catch (error) {
@@ -380,32 +396,40 @@ export const saveInvoiceToFirestore = async (invoice: Invoice): Promise<void> =>
   try {
     const invoiceDocRef = doc(invoicesCollectionRef, invoice.invoiceNumber);
 
-    const itemsToSave: InvoiceLineItem[] = invoice.items.map(item => ({
+    const itemsToSave: InvoiceLineItem[] = (invoice.items || []).map(item => ({
       ...item,
       hsnSac: item.hsnSac || '',
       gstRate: item.gstRate === undefined || item.gstRate === null ? 0 : Number(item.gstRate),
     }));
 
     const sanitizedBuyerAddress: BuyerAddress = {
-      ...invoice.buyerAddress,
-      addressLine2: invoice.buyerAddress.addressLine2 || '',
-      email: invoice.buyerAddress.email || '',
+      name: invoice.buyerAddress?.name || '',
+      addressLine1: invoice.buyerAddress?.addressLine1 || '',
+      addressLine2: invoice.buyerAddress?.addressLine2 || '',
+      gstin: invoice.buyerAddress?.gstin || '',
+      stateNameAndCode: invoice.buyerAddress?.stateNameAndCode || '',
+      contact: invoice.buyerAddress?.contact || '',
+      email: invoice.buyerAddress?.email || '',
     };
 
-    const invoiceDataToSave: any = { // Use 'any' temporarily to allow conditional property assignment
+    const invoiceDataToSave: Invoice = {
       ...invoice,
       items: itemsToSave,
       buyerAddress: sanitizedBuyerAddress,
-      // Convert undefined latestPaymentDate to null for Firestore compatibility
       latestPaymentDate: invoice.latestPaymentDate === undefined ? null : invoice.latestPaymentDate,
+      // Ensure all required fields have defaults if not present
+      invoiceNumber: invoice.invoiceNumber || `INV-ERR-${Date.now()}`,
+      invoiceDate: invoice.invoiceDate || new Date().toLocaleDateString('en-CA'),
+      buyerGstin: invoice.buyerGstin || '',
+      buyerName: invoice.buyerName || '',
+      subTotal: typeof invoice.subTotal === 'number' ? invoice.subTotal : 0,
+      taxAmount: typeof invoice.taxAmount === 'number' ? invoice.taxAmount : 0,
+      grandTotal: typeof invoice.grandTotal === 'number' ? invoice.grandTotal : 0,
+      amountPaid: typeof invoice.amountPaid === 'number' ? invoice.amountPaid : 0,
+      status: invoice.status || 'Unpaid',
     };
     
-    // Ensure other optional fields that might be on the top-level Invoice object are also handled
-    // For example, if Invoice type had other optional top-level string fields:
-    // if (invoiceDataToSave.someOptionalString === undefined) invoiceDataToSave.someOptionalString = null;
-
-
-    console.log("[Firebase] Data to save (after sanitization for undefined):", JSON.stringify(invoiceDataToSave, null, 2).substring(0, 500) + "...");
+    console.log("[Firebase] Data to save (after sanitization):", JSON.stringify(invoiceDataToSave, null, 2).substring(0, 500) + "...");
     await setDoc(invoiceDocRef, invoiceDataToSave);
     console.log("[Firebase] Invoice successfully saved to Firestore:", invoice.invoiceNumber);
   } catch (error) {
@@ -417,30 +441,68 @@ export const saveInvoiceToFirestore = async (invoice: Invoice): Promise<void> =>
 export const getInvoicesFromFirestore = async (): Promise<Invoice[]> => {
   console.log("[Firebase] getInvoicesFromFirestore called.");
   try {
-    const q = query(invoicesCollectionRef, orderBy("invoiceDate", "desc"), orderBy("invoiceNumber", "desc"));
-    const querySnapshot = await getDocs(q);
+    // Query for all documents, then sort in application code to ensure all docs are processed
+    const querySnapshot = await getDocs(invoicesCollectionRef);
     const invoices: Invoice[] = [];
     querySnapshot.forEach((docSnap) => {
       const data = docSnap.data();
+      console.log(`[Firebase] Raw invoice data for ${docSnap.id}:`, data);
+
+      if (!data.invoiceNumber || typeof data.invoiceNumber !== 'string') {
+        console.warn(`[Firebase] Invoice document ${docSnap.id} missing or invalid invoiceNumber. Skipping.`);
+        return;
+      }
+      if (!data.invoiceDate || typeof data.invoiceDate !== 'string') {
+        console.warn(`[Firebase] Invoice document ${docSnap.id} missing or invalid invoiceDate. Using fallback.`, data.invoiceDate);
+        // Fallback for invoiceDate, but ideally this should not happen if data is saved correctly
+        data.invoiceDate = new Date().toLocaleDateString('en-CA');
+      }
+
+
       const items = (data.items || []).map((item: any) => ({
-        ...item,
+        id: item.id || `item-${Date.now()}`,
+        name: item.name || "N/A",
+        price: typeof item.price === 'number' ? item.price : 0,
+        quantity: typeof item.quantity === 'number' ? item.quantity : 0,
+        total: typeof item.total === 'number' ? item.total : 0,
         hsnSac: item.hsnSac || '',
         gstRate: item.gstRate === undefined || item.gstRate === null ? 0 : Number(item.gstRate)
       }));
-      const buyerAddress = {
-        ...data.buyerAddress,
+
+      const buyerAddress: BuyerAddress = {
+        name: data.buyerAddress?.name || '',
+        addressLine1: data.buyerAddress?.addressLine1 || '',
         addressLine2: data.buyerAddress?.addressLine2 || '',
+        gstin: data.buyerAddress?.gstin || '',
+        stateNameAndCode: data.buyerAddress?.stateNameAndCode || '',
+        contact: data.buyerAddress?.contact || '',
         email: data.buyerAddress?.email || '',
       };
+
       invoices.push({
-        ...data,
-        items,
+        invoiceNumber: data.invoiceNumber,
+        invoiceDate: data.invoiceDate,
+        buyerGstin: data.buyerGstin || '',
+        buyerName: data.buyerName || '',
         buyerAddress,
-        // Ensure latestPaymentDate is string or undefined, not Firestore Timestamp or null from db if not set right
-        latestPaymentDate: data.latestPaymentDate || undefined,
+        items,
+        subTotal: typeof data.subTotal === 'number' ? data.subTotal : 0,
+        taxAmount: typeof data.taxAmount === 'number' ? data.taxAmount : 0,
+        grandTotal: typeof data.grandTotal === 'number' ? data.grandTotal : 0,
+        amountPaid: typeof data.amountPaid === 'number' ? data.amountPaid : 0,
+        status: data.status || 'Unpaid',
+        latestPaymentDate: data.latestPaymentDate === null ? undefined : (data.latestPaymentDate || undefined),
       } as Invoice);
     });
-    console.log(`[Firebase] Fetched ${invoices.length} invoices.`);
+
+    // Sort invoices in application code after fetching and mapping
+    invoices.sort((a, b) => {
+        const dateComparison = new Date(b.invoiceDate).getTime() - new Date(a.invoiceDate).getTime();
+        if (dateComparison !== 0) return dateComparison;
+        return b.invoiceNumber.localeCompare(a.invoiceNumber);
+    });
+
+    console.log(`[Firebase] Fetched and mapped ${invoices.length} invoices. Sorted by date and number.`);
     return invoices;
   } catch (error) {
     console.error("[Firebase] Error fetching invoices from Firestore:", error);
@@ -453,10 +515,8 @@ export const updateInvoiceInFirestore = async (invoiceNumber: string, updates: P
   try {
     const invoiceDocRef = doc(invoicesCollectionRef, invoiceNumber);
     
-    // Create a new object for updates to avoid modifying the original 'updates' object directly
     const updatesToApply: { [key: string]: any } = {};
 
-    // Sanitize items if present in updates
     if (updates.items) {
       updatesToApply.items = updates.items.map(item => ({
         ...item,
@@ -465,7 +525,6 @@ export const updateInvoiceInFirestore = async (invoiceNumber: string, updates: P
       }));
     }
 
-    // Sanitize buyerAddress if present in updates
     if (updates.buyerAddress) {
         updatesToApply.buyerAddress = {
             ...updates.buyerAddress,
@@ -474,29 +533,20 @@ export const updateInvoiceInFirestore = async (invoiceNumber: string, updates: P
         };
     }
     
-    // Explicitly handle latestPaymentDate: convert undefined to null for Firestore
-    // Only include latestPaymentDate in updatesToApply if it's a key in the original updates object
     if (updates.hasOwnProperty('latestPaymentDate')) {
       updatesToApply.latestPaymentDate = updates.latestPaymentDate === undefined ? null : updates.latestPaymentDate;
     }
 
-    // Copy other fields from updates to updatesToApply
     for (const key in updates) {
       if (updates.hasOwnProperty(key) && !updatesToApply.hasOwnProperty(key)) {
         (updatesToApply as any)[key] = (updates as any)[key];
+        // Convert any explicit undefined to null for other fields as well
+        if ((updatesToApply as any)[key] === undefined) {
+            (updatesToApply as any)[key] = null;
+        }
       }
     }
     
-    // If a field in updatesToApply is explicitly undefined (after potential conversion to null failed or wasn't applied)
-    // Firestore would error. It's better to delete such fields before setDoc.
-    // However, converting to 'null' is usually the preferred way for "no value".
-    // For fields that should be removed entirely, use deleteField() if needed.
-    // Example for a field that should be removed if undefined:
-    // if (updatesToApply.someFieldThatCouldBeRemoved === undefined) {
-    //   updatesToApply.someFieldThatCouldBeRemoved = deleteField();
-    // }
-
-
     console.log(`[Firebase] Processed updatesToApply for ${invoiceNumber}:`, updatesToApply);
     await setDoc(invoiceDocRef, updatesToApply, { merge: true });
     console.log(`[Firebase] Invoice ${invoiceNumber} updated successfully.`);
@@ -509,6 +559,5 @@ export const updateInvoiceInFirestore = async (invoiceNumber: string, updates: P
 
 export { db, auth, User };
 export type { InventoryItem, BuyerAddress, BuyerProfile, AppSettingsType, SalesRecord, Invoice, InvoiceLineItem };
-
 
     
