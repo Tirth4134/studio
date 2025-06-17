@@ -368,6 +368,7 @@ export const getSalesRecordsFromFirestore = async (): Promise<SalesRecord[]> => 
 
 // --- Invoice Storage ---
 export const saveInvoiceToFirestore = async (invoice: Invoice): Promise<void> => {
+  console.log("Firebase: saveInvoiceToFirestore called with invoice number:", invoice.invoiceNumber);
   try {
     const invoiceDocRef = doc(invoicesCollectionRef, invoice.invoiceNumber);
     // Ensure gstRate is saved correctly for items
@@ -376,14 +377,17 @@ export const saveInvoiceToFirestore = async (invoice: Invoice): Promise<void> =>
       gstRate: item.gstRate === undefined ? undefined : Number(item.gstRate)
     }));
     const invoiceDataToSave = { ...invoice, items: itemsToSave };
+    console.log("Firebase: Data to save:", JSON.stringify(invoiceDataToSave, null, 2));
     await setDoc(invoiceDocRef, invoiceDataToSave);
+    console.log("Firebase: Invoice successfully saved to Firestore:", invoice.invoiceNumber);
   } catch (error) {
-    console.error(`Error saving invoice ${invoice.invoiceNumber} to Firestore:`, error);
-    throw error;
+    console.error(`Firebase: Error saving invoice ${invoice.invoiceNumber} to Firestore:`, error);
+    throw error; // Re-throw to be caught by caller
   }
 };
 
 export const getInvoicesFromFirestore = async (): Promise<Invoice[]> => {
+  console.log("Firebase: getInvoicesFromFirestore called.");
   try {
     const q = query(invoicesCollectionRef, orderBy("invoiceDate", "desc"), orderBy("invoiceNumber", "desc"));
     const querySnapshot = await getDocs(q);
@@ -396,10 +400,11 @@ export const getInvoicesFromFirestore = async (): Promise<Invoice[]> => {
       }));
       invoices.push({ ...data, items } as Invoice);
     });
+    console.log(`Firebase: Fetched ${invoices.length} invoices.`);
     return invoices;
   } catch (error) {
-    console.error("Error fetching invoices from Firestore:", error);
-    return [];
+    console.error("Firebase: Error fetching invoices from Firestore:", error);
+    return []; // Return empty on error to prevent app crash, error logged
   }
 };
 
@@ -415,3 +420,4 @@ export const updateInvoiceInFirestore = async (invoiceNumber: string, updates: P
 
 
 export { db, auth, User };
+

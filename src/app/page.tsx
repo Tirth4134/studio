@@ -70,8 +70,10 @@ export default function HomePage() {
   }, []);
 
   const fetchPastInvoices = useCallback(async () => {
+    console.log("HomePage: fetchPastInvoices called");
     try {
       const fetchedInvoices = await getInvoicesFromFirestore();
+      console.log(`HomePage: Successfully fetched ${fetchedInvoices.length} past invoices.`);
       setPastInvoices(fetchedInvoices);
     } catch (error: any) {
       console.error("HomePage: Error fetching past invoices:", error);
@@ -185,22 +187,27 @@ export default function HomePage() {
   };
 
   const handlePrintInvoice = useCallback(async () => {
+    console.log("HomePage: handlePrintInvoice initiated.");
     if (invoiceItems.length === 0) {
       toast({ title: "Cannot Print", description: "Invoice is empty. Add items to print.", variant: "destructive" });
+      console.log("HomePage: handlePrintInvoice - No items to print.");
       return;
     }
 
     const validGstin = buyerAddress.gstin && buyerAddress.gstin.trim() !== "" && !buyerAddress.gstin.includes("(Placeholder)");
     if (validGstin) {
       try {
+        console.log("HomePage: Attempting to save buyer profile for GSTIN:", buyerAddress.gstin);
         await saveBuyerProfile(buyerAddress.gstin, buyerAddress);
         toast({ title: "Buyer Profile Saved", description: `Details for GSTIN ${buyerAddress.gstin} stored.`, variant: "default", duration: 3000});
+        console.log("HomePage: Buyer profile saved successfully.");
       } catch (error) {
-        console.error("Error saving buyer profile:", error);
+        console.error("HomePage: Error saving buyer profile:", error);
         toast({ title: "Profile Save Error", description: `Could not save buyer profile. Error: ${(error as Error).message}`, variant: "destructive"});
       }
     } else {
          toast({ title: "Info", description: `Buyer profile not saved: GSTIN is empty or placeholder.`, variant: "default", duration: 3000});
+         console.log("HomePage: Buyer profile not saved, GSTIN invalid or placeholder.");
     }
 
     const salesRecordsToSave: SalesRecord[] = [];
@@ -221,16 +228,18 @@ export default function HomePage() {
           totalProfit: profit,
         });
       } else {
-        console.warn(`Could not find inventory item with ID ${invoiceItem.id} to record sale.`);
+        console.warn(`HomePage: Could not find inventory item with ID ${invoiceItem.id} to record sale.`);
       }
     }
 
     if (salesRecordsToSave.length > 0) {
       try {
+        console.log("HomePage: Attempting to save sales records:", salesRecordsToSave);
         await saveSalesRecordsToFirestore(salesRecordsToSave);
         toast({ title: "Sales Recorded", description: `${salesRecordsToSave.length} item sales recorded successfully for profit tracking.`, variant: "default", duration: 4000 });
+        console.log("HomePage: Sales records saved successfully.");
       } catch (error) {
-        console.error("Error saving sales records:", error);
+        console.error("HomePage: Error saving sales records:", error);
         toast({ title: "Sales Record Error", description: `Could not save sales details for profit tracking. Error: ${(error as Error).message}`, variant: "destructive"});
       }
     }
@@ -257,19 +266,26 @@ export default function HomePage() {
       status: 'Unpaid', 
     };
 
+    console.log("HomePage: Attempting to save invoice. Data:", JSON.stringify(invoiceToSave, null, 2));
     try {
       await saveInvoiceToFirestore(invoiceToSave);
-      toast({ title: "Invoice Saved", description: `Invoice ${currentInvoiceNumber} saved successfully.`, variant: "default" });
+      toast({ title: "Invoice Saved", description: `Invoice ${currentInvoiceNumber} saved successfully to database.`, variant: "default" });
+      console.log(`HomePage: Invoice ${currentInvoiceNumber} saved successfully to Firestore.`);
       setPastInvoices(prev => [invoiceToSave, ...prev].sort((a, b) => new Date(b.invoiceDate).getTime() - new Date(a.invoiceDate).getTime() || b.invoiceNumber.localeCompare(a.invoiceNumber)));
+      console.log("HomePage: Past invoices state updated.");
     } catch (error) {
-      console.error("Error saving invoice:", error);
-      toast({ title: "Invoice Save Error", description: `Could not save invoice ${currentInvoiceNumber}. Error: ${(error as Error).message}`, variant: "destructive"});
+      console.error("HomePage: Error saving invoice to Firestore:", error);
+      toast({ title: "Invoice Save Error", description: `Could not save invoice ${currentInvoiceNumber} to database. Error: ${(error as Error).message}`, variant: "destructive"});
     }
 
-
+    console.log("HomePage: Triggering window.print().");
     window.print();
     updateInvoiceCounter(invoiceCounter + 1);
-    getAppSettingsFromFirestore(initialBuyerAddressGlobal).then(settings => setBuyerAddress(settings.buyerAddress));
+    console.log("HomePage: Invoice counter updated.");
+    getAppSettingsFromFirestore(initialBuyerAddressGlobal).then(settings => {
+      setBuyerAddress(settings.buyerAddress);
+      console.log("HomePage: Buyer address reset from settings.");
+    });
 
 
   }, [invoiceItems, inventory, currentInvoiceNumber, invoiceDate, invoiceCounter, toast, buyerAddress]);
@@ -293,8 +309,6 @@ export default function HomePage() {
             email: profile.email || '', 
         };
         setBuyerAddress(completeProfile); 
-        // No need to call saveBuyerAddressToAppSettings here, as this is a lookup for current invoice.
-        // It will be saved with the buyer profile when printing.
         toast({ title: "Buyer Found", description: `Details for ${profile.name || 'Buyer'} loaded.`, variant: "default" });
         setSearchedBuyerProfiles([]); 
       } else {
@@ -342,7 +356,6 @@ export default function HomePage() {
               email: singleProfile.email || '', 
           };
           setBuyerAddress(completeProfile);
-          // No need to call saveBuyerAddressToAppSettings here for same reason as GSTIN lookup
           toast({ title: "Buyer Found", description: `Details for ${singleProfile.name} loaded.`, variant: "default" });
           setSearchedBuyerProfiles([]); 
         } else {
@@ -706,3 +719,4 @@ export default function HomePage() {
     </div>
   );
 }
+
