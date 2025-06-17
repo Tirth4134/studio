@@ -7,8 +7,8 @@ import { getSalesRecordsFromFirestore, updateInvoiceInFirestore, getInvoicesFrom
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DatePickerWithRange } from "@/components/ui/date-picker-with-range";
-import { DatePicker } from "@/components/ui/date-picker"; // Single date picker
-import { BarChart3, CalendarDays, AlertTriangle, TrendingUp, TrendingDown, DollarSign, Edit, Save, XCircle } from 'lucide-react';
+import { DatePicker } from "@/components/ui/date-picker"; 
+import { BarChart3, CalendarDays, AlertTriangle, TrendingUp, TrendingDown, DollarSign, Edit, Save, XCircle, RefreshCw } from 'lucide-react';
 import ProfitLossChart from './profit-loss-chart';
 import { subDays, format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, parseISO, differenceInDays, startOfYear, endOfYear, isValid } from 'date-fns';
 import type { DateRange } from "react-day-picker";
@@ -36,9 +36,10 @@ interface ReportsSectionProps {
 }
 
 
-export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoading: initialIsLoading, fetchPastInvoices }: ReportsSectionProps) {
+export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoading: isLoadingProp, fetchPastInvoices }: ReportsSectionProps) {
+  console.log("[ReportsSection] Rendering. Received pastInvoices count:", pastInvoices.length, "isLoadingProp:", isLoadingProp);
   const [salesRecords, setSalesRecords] = useState<SalesRecord[]>([]);
-  const [isLoading, setIsLoading] = useState(initialIsLoading);
+  const [isSalesRecordsLoading, setIsSalesRecordsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [timeRangeOption, setTimeRangeOption] = useState<string>('last7days'); 
   const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>(undefined);
@@ -49,27 +50,42 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
   const [editStatus, setEditStatus] = useState<Invoice['status']>('Unpaid');
   const [editPaymentDate, setEditPaymentDate] = useState<Date | undefined>(new Date());
   const { toast } = useToast();
+  const [isRefreshingInvoices, setIsRefreshingInvoices] = useState(false);
 
   useEffect(() => {
-    setIsLoading(true); 
-    const fetchSalesAndInvoices = async () => {
+    console.log("[ReportsSection] useEffect for sales records fetch triggered.");
+    setIsSalesRecordsLoading(true); 
+    const fetchSalesData = async () => {
       setError(null);
       try {
         const records = await getSalesRecordsFromFirestore();
         setSalesRecords(records.sort((a, b) => new Date(a.saleDate).getTime() - new Date(b.saleDate).getTime()));
+        console.log("[ReportsSection] Successfully fetched", records.length, "sales records.");
       } catch (err: any) {
-        console.error("Error fetching data for reports:", err);
-        setError(`Failed to load report data. ${err.message || 'Please try again later.'}`);
+        console.error("[ReportsSection] Error fetching sales records:", err);
+        setError(`Failed to load sales records. ${err.message || 'Please try again later.'}`);
       } finally {
-        setIsLoading(false);
+        setIsSalesRecordsLoading(false);
+        console.log("[ReportsSection] Sales records fetch finished.");
       }
     };
-    fetchSalesAndInvoices();
+    fetchSalesData();
   }, []); 
 
-  useEffect(() => {
-    setIsLoading(initialIsLoading);
-  }, [initialIsLoading]);
+  const handleRefreshInvoices = async () => {
+    console.log("[ReportsSection] handleRefreshInvoices called.");
+    setIsRefreshingInvoices(true);
+    try {
+      await fetchPastInvoices(); // This function is passed from HomePage and updates HomePage's state
+      toast({title: "Invoices Refreshed", description: "Past invoices list has been updated."});
+    } catch (e) {
+      // Error already handled and toasted by fetchPastInvoices in HomePage
+       console.error("[ReportsSection] Error during manual invoice refresh:", e);
+    } finally {
+      setIsRefreshingInvoices(false);
+      console.log("[ReportsSection] handleRefreshInvoices finished.");
+    }
+  };
 
   const processedChartData = useMemo(() => {
     if (salesRecords.length === 0) return [];
@@ -99,7 +115,7 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
     const normalizedEndDate = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate(), 23, 59, 59, 999);
 
     const filteredRecords = salesRecords.filter(record => {
-      const recordDate = parseISO(record.saleDate); // Assuming saleDate on SalesRecord is YYYY-MM-DD
+      const recordDate = parseISO(record.saleDate); 
       return isValid(recordDate) && new Date(recordDate.getFullYear(), recordDate.getMonth(), recordDate.getDate()) >= normalizedStartDate && new Date(recordDate.getFullYear(), recordDate.getMonth(), recordDate.getDate()) <= normalizedEndDate;
     });
     
@@ -202,26 +218,26 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
   };
 
 
-  if (isLoading) {
+  if (isLoadingProp && pastInvoices.length === 0) { // Show main loading if prop says so AND no invoices yet
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
-        <p className="ml-4 text-muted-foreground">Loading reports data...</p>
+        <p className="ml-4 text-muted-foreground">Loading initial reports data...</p>
       </div>
     );
   }
 
-  if (error) {
+  if (error) { // For sales record fetching errors
     return (
       <Card className="shadow-lg border-destructive">
         <CardHeader>
           <CardTitle className="flex items-center text-destructive">
-            <AlertTriangle className="mr-2 h-6 w-6" /> Error Loading Reports
+            <AlertTriangle className="mr-2 h-6 w-6" /> Error Loading Sales Report Data
           </CardTitle>
         </CardHeader>
         <CardContent>
           <p>{error}</p>
-          <p className="mt-2 text-sm">This might be due to a missing Firestore index. Please check your browser's developer console for a link to create the required index. The error message might provide more details.</p>
+          <p className="mt-2 text-sm">This might be due to a missing Firestore index for sales records. Please check your browser's developer console for a link to create the required index. The error message might provide more details.</p>
         </CardContent>
       </Card>
     );
@@ -267,11 +283,16 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
           </div>
         </CardHeader>
         <CardContent className="pt-6">
-          {processedChartData.length > 0 ? <ProfitLossChart data={processedChartData} /> : (
+          {isSalesRecordsLoading ? (
+             <div className="flex items-center justify-center h-40">
+                <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-primary"></div>
+                <p className="ml-3 text-muted-foreground">Loading profit/loss chart data...</p>
+            </div>
+          ) : processedChartData.length > 0 ? <ProfitLossChart data={processedChartData} /> : (
             <div className="text-center py-10">
               <BarChart3 className="mx-auto h-12 w-12 text-muted-foreground" />
-              <p className="mt-4 text-muted-foreground">No sales data available for the selected period.</p>
-              {salesRecords.length > 0 && <p className="text-sm text-muted-foreground">Try selecting a different time range or check if sales have been recorded.</p>}
+              <p className="mt-4 text-muted-foreground">No sales data available for the selected period to display chart.</p>
+              {salesRecords.length > 0 && <p className="text-sm text-muted-foreground">Try selecting a different time range.</p>}
               {salesRecords.length === 0 && <p className="text-sm text-muted-foreground">Start making sales to see your profit data here!</p>}
             </div>
           )}
@@ -279,11 +300,23 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
       </Card>
 
       <Card className="shadow-lg mt-6">
-        <CardHeader className="bg-secondary/30">
-          <CardTitle className="font-headline text-xl">Past Invoices</CardTitle>
-          <CardDescription>Review and manage payment status for previously generated invoices.</CardDescription>
+        <CardHeader className="bg-secondary/30 flex flex-row items-center justify-between">
+            <div>
+                <CardTitle className="font-headline text-xl">Past Invoices</CardTitle>
+                <CardDescription>Review and manage payment status for previously generated invoices.</CardDescription>
+            </div>
+            <Button variant="outline" size="sm" onClick={handleRefreshInvoices} disabled={isRefreshingInvoices || isLoadingProp}>
+                <RefreshCw className={`mr-2 h-4 w-4 ${isRefreshingInvoices ? 'animate-spin' : ''}`} />
+                {isRefreshingInvoices ? 'Refreshing...' : 'Refresh Invoices'}
+            </Button>
         </CardHeader>
         <CardContent>
+          {isLoadingProp && pastInvoices.length === 0 ? (
+             <div className="flex items-center justify-center h-40">
+                <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-primary"></div>
+                <p className="ml-3 text-muted-foreground">Loading past invoices...</p>
+            </div>
+          ) : (
           <ScrollArea className="h-[400px]">
             <Table>
               <TableHeader>
@@ -301,7 +334,10 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
               </TableHeader>
               <TableBody>
                 {pastInvoices.length === 0 ? (
-                  <TableRow><TableCell colSpan={9} className="text-center">No past invoices found.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={9} className="text-center py-10 text-muted-foreground">
+                    No past invoices found.
+                    {isLoadingProp ? " Still loading..." : ""}
+                  </TableCell></TableRow>
                 ) : (
                   pastInvoices.map(invoice => (
                     <TableRow key={invoice.invoiceNumber}>
@@ -310,7 +346,7 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
                       <TableCell>{invoice.buyerName} ({invoice.buyerGstin || 'N/A'})</TableCell>
                       <TableCell className="text-right">{invoice.grandTotal.toFixed(2)}</TableCell>
                       <TableCell className="text-right">{invoice.amountPaid.toFixed(2)}</TableCell>
-                      <TableCell>{invoice.latestPaymentDate || 'N/A'}</TableCell>
+                      <TableCell>{invoice.latestPaymentDate ? format(parseISO(invoice.latestPaymentDate), 'dd MMM yyyy') : 'N/A'}</TableCell>
                       <TableCell className="text-right font-semibold">{(invoice.grandTotal - invoice.amountPaid).toFixed(2)}</TableCell>
                       <TableCell className="text-center">
                         <Badge variant={getStatusBadgeVariant(invoice.status)}>{invoice.status}</Badge>
@@ -326,6 +362,7 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
               </TableBody>
             </Table>
           </ScrollArea>
+          )}
         </CardContent>
       </Card>
 
@@ -374,3 +411,4 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
   );
 }
 
+    
