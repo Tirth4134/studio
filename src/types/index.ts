@@ -18,6 +18,8 @@ export interface InventoryItem {
   stock: number;
   description?: string;
   purchaseDate?: string; // Added purchase date, YYYY-MM-DD
+  hsnSac?: string;
+  gstRate?: number; // Store as percentage, e.g., 18 for 18%
 }
 
 export interface InvoiceLineItem {
@@ -25,8 +27,10 @@ export interface InvoiceLineItem {
   name: string;
   price: number; // Selling price per unit
   quantity: number;
-  total: number;
-  category?: string; // Added to store category for HSN/SAC display
+  total: number; // This is (price * quantity), the taxable value for this line item
+  hsnSac?: string;
+  gstRate?: number; // Store as percentage, e.g., 18 for 18%
+  // category is implicitly available from the inventory item if needed, but hsnSac is more specific for tax
 }
 
 export interface AppData {
@@ -36,8 +40,8 @@ export interface AppData {
 }
 
 export interface AppSettings{
-  buyerAddress: BuyerAddress; // Ensure this is BuyerAddress, not 'any'
-  invoiceCounter: number; // Ensure this is number, not 'any'
+  buyerAddress: BuyerAddress;
+  invoiceCounter: number;
 }
 
 // Represents a buyer profile stored by GSTIN
@@ -57,4 +61,18 @@ export interface SalesRecord {
   sellingPricePerUnit: number;
   buyingPricePerUnit: number;
   totalProfit: number;
+}
+
+export interface Invoice {
+  invoiceNumber: string;
+  invoiceDate: string;
+  buyerGstin: string; 
+  buyerName: string;
+  buyerAddress: BuyerAddress; 
+  items: InvoiceLineItem[];
+  subTotal: number; // Sum of (item.price * item.quantity) for all items
+  taxAmount: number; // Sum of GST calculated for each item
+  grandTotal: number; // subTotal + taxAmount
+  amountPaid: number;
+  status: 'Unpaid' | 'Partially Paid' | 'Paid' | 'Cancelled';
 }

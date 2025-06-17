@@ -21,7 +21,7 @@ import {
   saveAllAppSettingsToFirestore,
   saveBuyerProfile,
   getBuyerProfileByGSTIN,
-  getBuyerProfilesByName, // New import
+  getBuyerProfilesByName, 
   saveSalesRecordsToFirestore,
   saveInvoiceToFirestore, 
   getInvoicesFromFirestore,
@@ -31,10 +31,10 @@ import {
 const todayForSeed = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD
 
 const initialInventoryForSeed: InventoryItem[] = [
-  { id: generateUniqueId(), category: "Mobile", name: "iPhone 15 Pro", buyingPrice: 800, price: 999.99, stock: 10, description: "The latest iPhone with Pro features.", purchaseDate: todayForSeed },
-  { id: generateUniqueId(), category: "Mobile", name: "Samsung Galaxy S24 Ultra", buyingPrice: 950, price: 1199.99, stock: 15, description: "Flagship Android phone from Samsung.", purchaseDate: todayForSeed },
-  { id: generateUniqueId(), category: "Laptop", name: "MacBook Air M3", buyingPrice: 900, price: 1099.00, stock: 8, description: "Thin and light laptop with Apple's M3 chip.", purchaseDate: todayForSeed },
-  { id: generateUniqueId(), category: "Accessories", name: "Wireless Charger", buyingPrice: 25, price: 49.99, stock: 25, description: "Qi-certified wireless charging pad.", purchaseDate: todayForSeed },
+  { id: generateUniqueId(), category: "Mobile", name: "iPhone 15 Pro", buyingPrice: 800, price: 999.99, stock: 10, description: "The latest iPhone with Pro features.", purchaseDate: todayForSeed, hsnSac: "851712", gstRate: 18 },
+  { id: generateUniqueId(), category: "Mobile", name: "Samsung Galaxy S24 Ultra", buyingPrice: 950, price: 1199.99, stock: 15, description: "Flagship Android phone from Samsung.", purchaseDate: todayForSeed, hsnSac: "851712", gstRate: 18 },
+  { id: generateUniqueId(), category: "Laptop", name: "MacBook Air M3", buyingPrice: 900, price: 1099.00, stock: 8, description: "Thin and light laptop with Apple's M3 chip.", purchaseDate: todayForSeed, hsnSac: "847130", gstRate: 18 },
+  { id: generateUniqueId(), category: "Accessories", name: "Wireless Charger", buyingPrice: 25, price: 49.99, stock: 25, description: "Qi-certified wireless charging pad.", purchaseDate: todayForSeed, hsnSac: "850440", gstRate: 12 },
 ];
 
 const initialBuyerAddressGlobal: BuyerAddress = {
@@ -89,7 +89,7 @@ export default function HomePage() {
           console.log("HomePage: Fetched inventory from Firestore:", firestoreInventory);
           const appSettings = await getAppSettingsFromFirestore(initialBuyerAddressGlobal);
           console.log("HomePage: Fetched app settings from Firestore:", appSettings);
-          await fetchPastInvoices(); // Fetch past invoices as well
+          await fetchPastInvoices(); 
 
           if (firestoreInventory.length === 0 && appSettings.invoiceCounter === 1 && appSettings.buyerAddress.name === initialBuyerAddressGlobal.name) {
             toast({
@@ -156,11 +156,6 @@ export default function HomePage() {
     setInvoiceCounter(newCounter);
     await saveInvoiceCounterToFirestore(newCounter);
   };
-
-  const updateCurrentBuyerAddress = async (newAddress: BuyerAddress) => {
-    setBuyerAddress(newAddress);
-    await saveBuyerAddressToAppSettings(newAddress); 
-  };
   
   const updateInventory = async (newInventory: InventoryItem[] | ((prevState: InventoryItem[]) => InventoryItem[])) => {
     console.log("HomePage: updateInventory called.");
@@ -219,7 +214,7 @@ export default function HomePage() {
           saleDate: invoiceDate,
           itemId: invoiceItem.id,
           itemName: invoiceItem.name,
-          category: inventoryItem.category,
+          category: inventoryItem.category, 
           quantitySold: invoiceItem.quantity,
           sellingPricePerUnit: invoiceItem.price,
           buyingPricePerUnit: inventoryItem.buyingPrice,
@@ -240,24 +235,26 @@ export default function HomePage() {
       }
     }
     
-    // Save the complete invoice
     const subTotal = invoiceItems.reduce((sum, item) => sum + item.total, 0);
-    const GST_RATE = 0.18; // Centralize if used elsewhere
-    const taxAmount = subTotal * GST_RATE;
-    const grandTotal = subTotal + taxAmount;
+    let totalTaxAmount = 0;
+    invoiceItems.forEach(item => {
+        const itemGstRate = item.gstRate === undefined || item.gstRate === null || isNaN(item.gstRate) ? 0 : item.gstRate;
+        totalTaxAmount += item.total * (itemGstRate / 100);
+    });
+    const grandTotal = subTotal + totalTaxAmount;
 
     const invoiceToSave: Invoice = {
       invoiceNumber: currentInvoiceNumber,
       invoiceDate: invoiceDate,
-      buyerGstin: buyerAddress.gstin, // Store GSTIN for linking if needed
+      buyerGstin: buyerAddress.gstin, 
       buyerName: buyerAddress.name,
       buyerAddress: buyerAddress,
       items: invoiceItems,
       subTotal: subTotal,
-      taxAmount: taxAmount,
+      taxAmount: totalTaxAmount,
       grandTotal: grandTotal,
-      amountPaid: 0, // Initial state
-      status: 'Unpaid', // Initial state
+      amountPaid: 0, 
+      status: 'Unpaid', 
     };
 
     try {
@@ -296,9 +293,10 @@ export default function HomePage() {
             email: profile.email || '', 
         };
         setBuyerAddress(completeProfile); 
-        await saveBuyerAddressToAppSettings(completeProfile); 
+        // No need to call saveBuyerAddressToAppSettings here, as this is a lookup for current invoice.
+        // It will be saved with the buyer profile when printing.
         toast({ title: "Buyer Found", description: `Details for ${profile.name || 'Buyer'} loaded.`, variant: "default" });
-        setSearchedBuyerProfiles([]); // Clear name search results
+        setSearchedBuyerProfiles([]); 
       } else {
         toast({ title: "Buyer Not Found", description: "No existing profile for this GSTIN. Please enter details manually.", variant: "default" });
         setBuyerAddress(prev => ({
@@ -311,7 +309,7 @@ export default function HomePage() {
           contact: '',
           email: ''
         }));
-        setSearchedBuyerProfiles([]); // Clear name search results
+        setSearchedBuyerProfiles([]); 
       }
     } catch (error) {
       console.error("Error looking up buyer by GSTIN:", error);
@@ -332,7 +330,7 @@ export default function HomePage() {
       const profiles = await getBuyerProfilesByName(nameQuery);
       if (profiles.length > 0) {
         setSearchedBuyerProfiles(profiles);
-        if (profiles.length === 1) { // If only one match, auto-select it
+        if (profiles.length === 1) { 
           const singleProfile = profiles[0];
            const completeProfile: BuyerAddress = {
               name: singleProfile.name || '',
@@ -344,9 +342,9 @@ export default function HomePage() {
               email: singleProfile.email || '', 
           };
           setBuyerAddress(completeProfile);
-          await saveBuyerAddressToAppSettings(completeProfile);
+          // No need to call saveBuyerAddressToAppSettings here for same reason as GSTIN lookup
           toast({ title: "Buyer Found", description: `Details for ${singleProfile.name} loaded.`, variant: "default" });
-          setSearchedBuyerProfiles([]); // Clear after auto-selection
+          setSearchedBuyerProfiles([]); 
         } else {
           toast({ title: "Multiple Buyers Found", description: `Found ${profiles.length} profiles. Please select one.`, variant: "default" });
         }
@@ -425,6 +423,8 @@ export default function HomePage() {
     const stock = normalizeStock(rawItem.stock || rawItem.Stock);
     const description = rawItem.description || rawItem.Description || '';
     const purchaseDate = rawItem.purchaseDate || rawItem.purchase_date;
+    const hsnSac = rawItem.hsnSac || rawItem.hsn_sac || rawItem.HSN_SAC || '';
+    const gstRate = normalizePrice(rawItem.gstRate || rawItem.gst_rate || rawItem.GSTRate);
 
 
     if (!name || typeof name !== 'string' || name.trim() === '') return null;
@@ -432,6 +432,8 @@ export default function HomePage() {
     if (isNaN(buyingPrice) || buyingPrice < 0) return null; 
     if (isNaN(stock) || stock < 0) return null; 
     if (!category || typeof category !== 'string' || category.trim() === '') return null;
+    if (gstRate !== undefined && (isNaN(gstRate) || gstRate < 0 || gstRate > 100)) return null;
+
 
     let finalId = rawItem.id && typeof rawItem.id === 'string' ? rawItem.id : generateUniqueId();
     while (allExistingItemIds.has(finalId) || tempImportedItemIdsForThisBatch.has(finalId)) {
@@ -452,6 +454,8 @@ export default function HomePage() {
       stock,
       description: typeof description === 'string' ? description.trim() : '',
       purchaseDate: validatedPurchaseDate,
+      hsnSac: typeof hsnSac === 'string' ? hsnSac.trim() : undefined,
+      gstRate: gstRate === undefined || isNaN(gstRate) ? undefined : gstRate,
     };
   };
 
@@ -547,6 +551,8 @@ export default function HomePage() {
               price: importedItem.price, 
               description: importedItem.description,
               purchaseDate: importedItem.purchaseDate || currentItem.purchaseDate, 
+              hsnSac: importedItem.hsnSac || currentItem.hsnSac,
+              gstRate: importedItem.gstRate !== undefined ? importedItem.gstRate : currentItem.gstRate,
             };
             updatedCount++;
           } else {

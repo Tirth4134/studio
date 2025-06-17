@@ -13,7 +13,7 @@ import { useToast } from '@/hooks/use-toast';
 
 interface CreateInvoiceFormProps {
   inventory: InventoryItem[];
-  onAddItemToInvoice: (item: InvoiceLineItem) => void;
+  onAddItemToInvoice: (item: Omit<InvoiceLineItem, 'total' | 'hsnSac' | 'gstRate'> & { hsnSac?: string; gstRate?: number }) => void;
   buyerAddress: BuyerAddress;
   setBuyerAddress: (addressOrUpdater: BuyerAddress | ((prevState: BuyerAddress) => BuyerAddress)) => void;
   onLookupBuyerByGSTIN: (gstin: string) => Promise<void>;
@@ -56,7 +56,7 @@ export default function CreateInvoiceForm({
   const [quantity, setQuantity] = useState<string>('1');
   const [currentGstinInput, setCurrentGstinInput] = useState(buyerAddress.gstin || '');
   const [companyNameSearch, setCompanyNameSearch] = useState('');
-  const [selectedProfileId, setSelectedProfileId] = useState<string>(''); // To hold ID of profile selected from name search
+  const [selectedProfileId, setSelectedProfileId] = useState<string>(''); 
 
   const { toast } = useToast();
 
@@ -87,8 +87,11 @@ export default function CreateInvoiceForm({
       return;
     }
     onAddItemToInvoice({
-      id: item.id, name: item.name, price: item.price, quantity: qty,
-      total: item.price * qty, category: item.category,
+      id: item.id, 
+      name: item.name, 
+      price: item.price, 
+      quantity: qty,
+      // hsnSac and gstRate will be picked from inventoryItem in InvoiceSection
     });
     if (item.stock - qty < 5 && item.stock - qty > 0) {
         toast({ title: "Low Stock Warning", description: `Low stock for ${item.name}. Only ${item.stock - qty} left!`, variant: "default" });
@@ -123,7 +126,7 @@ export default function CreateInvoiceForm({
     const nameQuery = companyNameSearch.trim();
     if (nameQuery) {
       onLookupBuyerByName(nameQuery);
-      setSelectedProfileId(''); // Reset selection when new search is made
+      setSelectedProfileId(''); 
     } else {
       toast({ title: "Info", description: "Please enter a company name to search.", variant: "default"});
       clearSearchedBuyerProfiles();
@@ -131,22 +134,22 @@ export default function CreateInvoiceForm({
   };
 
   const handleSelectProfileByName = (profileGstin: string) => {
-    const selectedProfile = searchedBuyerProfiles.find(p => p.gstin === profileGstin); // Assuming GSTIN is unique ID for profiles
+    const selectedProfile = searchedBuyerProfiles.find(p => p.gstin === profileGstin); 
     if (selectedProfile) {
-      setBuyerAddress({ // Directly set the full address
+      setBuyerAddress({ 
         name: selectedProfile.name,
         addressLine1: selectedProfile.addressLine1,
-        addressLine2: selectedProfile.addressLine2,
-        gstin: selectedProfile.gstin,
+        addressLine2: selectedProfile.addressLine2 || '', // ensure addressLine2 is always a string
+        gstin: selectedProfile.gstin, 
         stateNameAndCode: selectedProfile.stateNameAndCode,
         contact: selectedProfile.contact,
         email: selectedProfile.email || '',
       });
-      setCurrentGstinInput(selectedProfile.gstin); // Update GSTIN input as well
+      setCurrentGstinInput(selectedProfile.gstin); 
       toast({title: "Profile Selected", description: `Details for ${selectedProfile.name} loaded.`});
-      clearSearchedBuyerProfiles(); // Clear search results after selection
-      setCompanyNameSearch(''); // Clear company name search input
-      setSelectedProfileId(''); // Clear selected profile ID
+      clearSearchedBuyerProfiles(); 
+      setCompanyNameSearch(''); 
+      setSelectedProfileId(''); 
     }
   };
 
@@ -217,7 +220,7 @@ export default function CreateInvoiceForm({
                 </SelectTrigger>
                 <SelectContent>
                   {searchedBuyerProfiles.map(profile => (
-                    <SelectItem key={profile.gstin || profile.name} value={profile.gstin || profile.name}> {/* Use GSTIN as value, fallback to name if no GSTIN */}
+                    <SelectItem key={profile.gstin || profile.name} value={profile.gstin || profile.name}> {}
                       {profile.name} ({profile.gstin || 'No GSTIN'}) - {profile.addressLine1}
                     </SelectItem>
                   ))}

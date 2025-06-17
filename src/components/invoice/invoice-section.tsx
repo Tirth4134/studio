@@ -40,9 +40,21 @@ export default function InvoiceSection({
 }: InvoiceSectionProps) {
   const { toast } = useToast();
 
-  const handleAddItemToInvoice = async (itemToAdd: InvoiceLineItem) => {
+  const handleAddItemToInvoice = async (itemToAdd: Omit<InvoiceLineItem, 'total'>) => {
     const existingItemIndex = invoiceItems.findIndex(invItem => invItem.id === itemToAdd.id);
     const inventoryItem = inventory.find(inv => inv.id === itemToAdd.id);
+
+    if (!inventoryItem) {
+      toast({ title: "Error", description: "Selected item not found in inventory.", variant: "destructive" });
+      return;
+    }
+
+    const newItemLine: InvoiceLineItem = {
+      ...itemToAdd,
+      total: itemToAdd.price * itemToAdd.quantity,
+      hsnSac: inventoryItem.hsnSac,
+      gstRate: inventoryItem.gstRate,
+    };
 
     if (existingItemIndex !== -1) {
       setInvoiceItems(prevItems =>
@@ -50,25 +62,24 @@ export default function InvoiceSection({
           index === existingItemIndex
             ? {
                 ...item,
-                quantity: item.quantity + itemToAdd.quantity,
-                total: item.price * (item.quantity + itemToAdd.quantity),
+                quantity: item.quantity + newItemLine.quantity,
+                total: item.price * (item.quantity + newItemLine.quantity),
+                // HSN/SAC and GST rate are taken from the first add, assuming they don't change for the same item within one invoice
               }
             : item
         )
       );
     } else {
-      setInvoiceItems(prevItems => [...prevItems, { ...itemToAdd, category: inventoryItem?.category || '' }]);
+      setInvoiceItems(prevItems => [...prevItems, newItemLine]);
     }
 
-    if (inventoryItem) {
-      setInventory(prevInventory =>
-        prevInventory.map(invItem =>
-          invItem.id === itemToAdd.id
-            ? { ...invItem, stock: invItem.stock - itemToAdd.quantity }
-            : invItem
-        )
-      );
-    }
+    setInventory(prevInventory =>
+      prevInventory.map(invItem =>
+        invItem.id === itemToAdd.id
+          ? { ...invItem, stock: invItem.stock - itemToAdd.quantity }
+          : invItem
+      )
+    );
     
     toast({
       title: "Success",
@@ -114,7 +125,7 @@ export default function InvoiceSection({
     <div className="space-y-6">
       <CreateInvoiceForm
         inventory={inventory}
-        onAddItemToInvoice={handleAddItemToInvoice}
+        onAddItemToInvoice={(item) => handleAddItemToInvoice(item as Omit<InvoiceLineItem, 'total'>)} // Cast to satisfy, total is calculated internally
         buyerAddress={buyerAddress}
         setBuyerAddress={setBuyerAddress}
         onLookupBuyerByGSTIN={onLookupBuyerByGSTIN}

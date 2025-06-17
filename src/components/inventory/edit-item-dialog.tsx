@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
-import { Sparkles, Loader2, Save, CalendarDays } from 'lucide-react';
+import { Sparkles, Loader2, Save, CalendarDays, Hash, Percent } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { generateItemDescription } from '@/ai/flows/enrich-item-description';
 
@@ -27,6 +27,8 @@ export default function EditItemDialog({ isOpen, onOpenChange, itemToEdit, onUpd
   const [stock, setStock] = useState('');
   const [description, setDescription] = useState('');
   const [purchaseDate, setPurchaseDate] = useState('');
+  const [hsnSac, setHsnSac] = useState('');
+  const [gstRate, setGstRate] = useState('');
   const [isEnriching, setIsEnriching] = useState(false);
   const { toast } = useToast();
 
@@ -39,6 +41,8 @@ export default function EditItemDialog({ isOpen, onOpenChange, itemToEdit, onUpd
       setStock(itemToEdit.stock.toString());
       setDescription(itemToEdit.description || '');
       setPurchaseDate(itemToEdit.purchaseDate || new Date().toLocaleDateString('en-CA'));
+      setHsnSac(itemToEdit.hsnSac || '');
+      setGstRate(itemToEdit.gstRate !== undefined ? itemToEdit.gstRate.toString() : '');
     }
   }, [itemToEdit]);
 
@@ -52,9 +56,14 @@ export default function EditItemDialog({ isOpen, onOpenChange, itemToEdit, onUpd
     const numBuyingPrice = parseFloat(buyingPrice);
     const numSellingPrice = parseFloat(sellingPrice);
     const numStock = parseInt(stock, 10);
+    const numGstRate = gstRate ? parseFloat(gstRate) : undefined;
 
     if (isNaN(numBuyingPrice) || numBuyingPrice <= 0 || isNaN(numSellingPrice) || numSellingPrice <= 0 || isNaN(numStock) || numStock < 0) {
        toast({ title: "Error", description: "Prices and stock must be valid positive numbers.", variant: "destructive" });
+      return;
+    }
+    if (numGstRate !== undefined && (isNaN(numGstRate) || numGstRate < 0 || numGstRate > 100)) {
+      toast({ title: "Error", description: "GST Rate must be a valid percentage (0-100) or left empty.", variant: "destructive" });
       return;
     }
     
@@ -67,6 +76,8 @@ export default function EditItemDialog({ isOpen, onOpenChange, itemToEdit, onUpd
       stock: numStock,
       description: description,
       purchaseDate: purchaseDate,
+      hsnSac: hsnSac.trim() || undefined,
+      gstRate: numGstRate,
     });
     toast({ title: "Success", description: `${itemName} updated successfully.` });
     onOpenChange(false);
@@ -112,6 +123,18 @@ export default function EditItemDialog({ isOpen, onOpenChange, itemToEdit, onUpd
             <div>
               <Label htmlFor="edit-itemName">Item Name</Label>
               <Input id="edit-itemName" value={itemName} onChange={(e) => setItemName(e.target.value)} />
+            </div>
+             <div>
+              <Label htmlFor="edit-hsnSac" className="flex items-center">
+                <Hash className="mr-2 h-4 w-4 text-muted-foreground" /> HSN/SAC Code
+              </Label>
+              <Input id="edit-hsnSac" value={hsnSac} onChange={(e) => setHsnSac(e.target.value)} />
+            </div>
+            <div>
+              <Label htmlFor="edit-gstRate" className="flex items-center">
+                <Percent className="mr-2 h-4 w-4 text-muted-foreground" /> GST Rate (%)
+              </Label>
+              <Input id="edit-gstRate" type="number" value={gstRate} onChange={(e) => setGstRate(e.target.value)} step="0.01" min="0" max="100" />
             </div>
             <div>
               <Label htmlFor="edit-buyingPrice">Buying Price ($)</Label>

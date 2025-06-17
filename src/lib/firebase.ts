@@ -101,7 +101,13 @@ export const getInventoryFromFirestore = async (): Promise<InventoryItem[]> => {
     const querySnapshot = await getDocs(inventoryCollectionRef);
     const items: InventoryItem[] = [];
     querySnapshot.forEach((docSnap) => {
-      items.push({ id: docSnap.id, ...docSnap.data() } as InventoryItem);
+      const data = docSnap.data();
+      items.push({ 
+        id: docSnap.id, 
+        ...data,
+        hsnSac: data.hsnSac || undefined, // Ensure optional fields are handled
+        gstRate: data.gstRate === undefined ? undefined : Number(data.gstRate) // Ensure gstRate is number or undefined
+      } as InventoryItem);
     });
     return items;
   } catch (error) {
@@ -117,11 +123,15 @@ export const saveInventoryItemToFirestore = async (item: InventoryItem): Promise
       throw new Error("Invalid item data types for single save.");
     }
     const itemDocRef = doc(db, "inventory", item.id);
-    const dataToSave = { 
+    const dataToSave: Partial<InventoryItem> = { 
       category: item.category, name: item.name, buyingPrice: item.buyingPrice, 
       price: item.price, stock: item.stock, description: item.description || '',
-      purchaseDate: item.purchaseDate || new Date().toLocaleDateString('en-CA')
+      purchaseDate: item.purchaseDate || new Date().toLocaleDateString('en-CA'),
+      hsnSac: item.hsnSac || undefined,
+      gstRate: item.gstRate === undefined ? undefined : Number(item.gstRate),
     };
+    // Remove undefined fields before saving to Firestore
+    Object.keys(dataToSave).forEach(key => dataToSave[key as keyof typeof dataToSave] === undefined && delete dataToSave[key as keyof typeof dataToSave]);
     await setDoc(itemDocRef, dataToSave);
   } catch (error) {
     console.error(`Error saving single inventory item (ID: ${item.id}) to Firestore:`, error);
@@ -143,11 +153,14 @@ export const saveMultipleInventoryItemsToFirestore = async (items: InventoryItem
       console.warn("Invalid item data types in batch prep, skipping:", item); return;
     }
     const itemDocRef = doc(db, "inventory", item.id);
-    const itemData = { 
+    const itemData: Partial<InventoryItem> = { 
       category: item.category, name: item.name, buyingPrice: item.buyingPrice, 
       price: item.price, stock: item.stock, description: item.description || '',
-      purchaseDate: item.purchaseDate || new Date().toLocaleDateString('en-CA')
+      purchaseDate: item.purchaseDate || new Date().toLocaleDateString('en-CA'),
+      hsnSac: item.hsnSac || undefined,
+      gstRate: item.gstRate === undefined ? undefined : Number(item.gstRate),
     };
+    Object.keys(itemData).forEach(key => itemData[key as keyof typeof itemData] === undefined && delete itemData[key as keyof typeof itemData]);
     batch.set(itemDocRef, itemData);
     validItemsInBatchCount++;
   });
@@ -274,8 +287,8 @@ export const getBuyerProfilesByName = async (nameQuery: string): Promise<BuyerPr
     const q = query(
       buyerProfilesCollectionRef,
       where("name", ">=", standardizedQuery),
-      where("name", "<=", standardizedQuery + '\uf8ff'), // '\uf8ff' is a high Unicode character
-      limit(10) // Limit results for performance
+      where("name", "<=", standardizedQuery + '\uf8ff'), 
+      limit(10) 
     );
     const querySnapshot = await getDocs(q);
     const profiles: BuyerProfile[] = [];
@@ -286,26 +299,19 @@ export const getBuyerProfilesByName = async (nameQuery: string): Promise<BuyerPr
     return profiles;
   } catch (error) {
     console.error(`Error fetching buyer profiles by name "${nameQuery}":`, error);
-    // It's better to return empty array or throw, rather than returning null for an array type
     return []; 
   }
 };
 
 
 export const saveBuyerProfile = async (gstin: string, address: BuyerAddress): Promise<void> => {
-  // GSTIN can be empty if saving a profile that doesn't have one (e.g. retail customer)
-  // However, if a GSTIN is provided, it should be the document ID.
-  // If no GSTIN, we might need another unique ID or decide not to save such profiles this way.
-  // For now, we'll assume if gstin is present, it's the ID. If not, we might skip saving or use name as a less unique key.
-  // Let's enforce that GSTIN is used as the ID if present and non-empty.
-  
   const idToUse = gstin && gstin.trim() !== "" && !gstin.includes("(Placeholder)") 
                   ? gstin.trim().toUpperCase() 
                   : null;
 
   if (!idToUse) {
     console.log("Buyer profile not saved: No valid GSTIN provided to use as document ID.");
-    return; // Or handle differently, e.g., generate a unique ID if GSTIN is not the primary key
+    return; 
   }
 
   try {
@@ -314,7 +320,7 @@ export const saveBuyerProfile = async (gstin: string, address: BuyerAddress): Pr
       name: address.name || '',
       addressLine1: address.addressLine1 || '',
       addressLine2: address.addressLine2 || '',
-      gstin: idToUse, // Ensure the standardized GSTIN is part of the saved data
+      gstin: idToUse, 
       stateNameAndCode: address.stateNameAndCode || '',
       contact: address.contact || '',
       email: address.email || '', 
@@ -355,7 +361,6 @@ export const getSalesRecordsFromFirestore = async (): Promise<SalesRecord[]> => 
     return records;
   } catch (error) {
     console.error("Error fetching sales records from Firestore:", error);
-    // Return empty array on error to prevent app crash, error is logged.
     return [];
   }
 };
@@ -365,7 +370,13 @@ export const getSalesRecordsFromFirestore = async (): Promise<SalesRecord[]> => 
 export const saveInvoiceToFirestore = async (invoice: Invoice): Promise<void> => {
   try {
     const invoiceDocRef = doc(invoicesCollectionRef, invoice.invoiceNumber);
-    await setDoc(invoiceDocRef, invoice);
+    // Ensure gstRate is saved correctly for items
+    const itemsToSave = invoice.items.map(item => ({
+      ...item,
+      gstRate: item.gstRate === undefined ? undefined : Number(item.gstRate)
+    }));
+    const invoiceDataToSave = { ...invoice, items: itemsToSave };
+    await setDoc(invoiceDocRef, invoiceDataToSave);
   } catch (error) {
     console.error(`Error saving invoice ${invoice.invoiceNumber} to Firestore:`, error);
     throw error;
@@ -378,12 +389,16 @@ export const getInvoicesFromFirestore = async (): Promise<Invoice[]> => {
     const querySnapshot = await getDocs(q);
     const invoices: Invoice[] = [];
     querySnapshot.forEach((docSnap) => {
-      invoices.push(docSnap.data() as Invoice);
+      const data = docSnap.data();
+      const items = (data.items || []).map((item: any) => ({
+        ...item,
+        gstRate: item.gstRate === undefined ? undefined : Number(item.gstRate)
+      }));
+      invoices.push({ ...data, items } as Invoice);
     });
     return invoices;
   } catch (error) {
     console.error("Error fetching invoices from Firestore:", error);
-    // Return empty array on error, error is logged.
     return [];
   }
 };
