@@ -46,7 +46,7 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
   
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
   const [isEditDialogOpén, setIsEditDialogOpen] = useState(false);
-  const [editAmountPaid, setEditAmountPaid] = useState<string>('');
+  const [editNewPaymentAmount, setEditNewPaymentAmount] = useState<string>(''); // For new payment
   const [editStatus, setEditStatus] = useState<Invoice['status']>('Unpaid');
   const [editPaymentDate, setEditPaymentDate] = useState<Date | undefined>(new Date());
   const { toast } = useToast();
@@ -63,7 +63,7 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
         console.log("[ReportsSection] Successfully fetched", records.length, "sales records.");
       } catch (err: any) {
         console.error("[ReportsSection] Error fetching sales records:", err);
-        setError(`Failed to load sales records. ${err.message || 'Please try again later.'}`);
+        setError(`Failed to load sales records. ${err.message || 'Please try again later.'} This might be due to a missing Firestore index. Check the browser console for a link to create it.`);
       } finally {
         setIsSalesRecordsLoading(false);
         console.log("[ReportsSection] Sales records fetch finished.");
@@ -76,10 +76,9 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
     console.log("[ReportsSection] handleRefreshInvoices called.");
     setIsRefreshingInvoices(true);
     try {
-      await fetchPastInvoices(); // This function is passed from HomePage and updates HomePage's state
+      await fetchPastInvoices(); 
       toast({title: "Invoices Refreshed", description: "Past invoices list has been updated."});
     } catch (e) {
-      // Error already handled and toasted by fetchPastInvoices in HomePage
        console.error("[ReportsSection] Error during manual invoice refresh:", e);
     } finally {
       setIsRefreshingInvoices(false);
@@ -166,40 +165,50 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
 
   const handleEditInvoiceStatus = (invoice: Invoice) => {
     setEditingInvoice(invoice);
-    setEditAmountPaid(invoice.amountPaid.toString());
+    setEditNewPaymentAmount(''); // Reset for new payment entry
     setEditStatus(invoice.status);
-    setEditPaymentDate(invoice.latestPaymentDate ? parseISO(invoice.latestPaymentDate) : new Date());
+    setEditPaymentDate(new Date()); // Default to today for new payment
     setIsEditDialogOpen(true);
   };
 
   const handleSaveInvoiceUpdate = async () => {
     if (!editingInvoice || editPaymentDate === undefined) return;
-    const amountPaidNum = parseFloat(editAmountPaid);
-    if (isNaN(amountPaidNum) || amountPaidNum < 0) {
-      toast({ title: "Invalid Amount", description: "Please enter a valid amount paid.", variant: "destructive" });
+    
+    const newPaymentAmountNum = parseFloat(editNewPaymentAmount) || 0; // Treat empty/invalid as 0
+
+    if (newPaymentAmountNum < 0) {
+      toast({ title: "Invalid Amount", description: "Payment amount cannot be negative.", variant: "destructive" });
       return;
     }
 
-    let newStatus = editStatus;
-    if (amountPaidNum === 0 && newStatus !== 'Cancelled') newStatus = 'Unpaid';
-    else if (amountPaidNum > 0 && amountPaidNum < editingInvoice.grandTotal && newStatus !== 'Cancelled') newStatus = 'Partially Paid';
-    else if (amountPaidNum >= editingInvoice.grandTotal && newStatus !== 'Cancelled') newStatus = 'Paid';
+    const currentTotalPaid = editingInvoice.amountPaid;
+    const updatedTotalPaid = currentTotalPaid + newPaymentAmountNum;
 
-    const updatedInvoice: Invoice = {
-      ...editingInvoice,
-      amountPaid: amountPaidNum,
+    let newStatus = editStatus; // Use user-selected status if 'Cancelled'
+    if (editStatus !== 'Cancelled') { // Auto-determine status if not 'Cancelled'
+        if (updatedTotalPaid <= 0) newStatus = 'Unpaid';
+        else if (updatedTotalPaid < editingInvoice.grandTotal) newStatus = 'Partially Paid';
+        else if (updatedTotalPaid >= editingInvoice.grandTotal) newStatus = 'Paid';
+    }
+
+
+    const updatedInvoiceData: Partial<Invoice> = {
+      amountPaid: updatedTotalPaid,
       status: newStatus,
       latestPaymentDate: format(editPaymentDate, 'yyyy-MM-dd'),
     };
 
     try {
-      await updateInvoiceInFirestore(editingInvoice.invoiceNumber, { 
-        amountPaid: amountPaidNum, 
+      await updateInvoiceInFirestore(editingInvoice.invoiceNumber, updatedInvoiceData);
+      // Construct the full updated invoice object for local state update
+      const fullyUpdatedInvoice: Invoice = {
+        ...editingInvoice,
+        amountPaid: updatedTotalPaid,
         status: newStatus,
         latestPaymentDate: format(editPaymentDate, 'yyyy-MM-dd'),
-      });
-      onInvoiceUpdate(updatedInvoice); 
-      toast({ title: "Invoice Updated", description: `Status for invoice ${editingInvoice.invoiceNumber} updated.` });
+      };
+      onInvoiceUpdate(fullyUpdatedInvoice); 
+      toast({ title: "Invoice Updated", description: `Payment status for invoice ${editingInvoice.invoiceNumber} updated.` });
       setIsEditDialogOpen(false);
       setEditingInvoice(null);
     } catch (error: any) {
@@ -218,7 +227,7 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
   };
 
 
-  if (isLoadingProp && pastInvoices.length === 0) { // Show main loading if prop says so AND no invoices yet
+  if (isLoadingProp && pastInvoices.length === 0) { 
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
@@ -227,7 +236,7 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
     );
   }
 
-  if (error) { // For sales record fetching errors
+  if (error) { 
     return (
       <Card className="shadow-lg border-destructive">
         <CardHeader>
@@ -237,7 +246,6 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
         </CardHeader>
         <CardContent>
           <p>{error}</p>
-          <p className="mt-2 text-sm">This might be due to a missing Firestore index for sales records. Please check your browser's developer console for a link to create the required index. The error message might provide more details.</p>
         </CardContent>
       </Card>
     );
@@ -300,18 +308,18 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
       </Card>
 
       <Card className="shadow-lg mt-6">
-        <CardHeader className="bg-secondary/30 flex flex-row items-center justify-between">
+        <CardHeader className="bg-secondary/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
             <div>
                 <CardTitle className="font-headline text-xl">Past Invoices</CardTitle>
                 <CardDescription>Review and manage payment status for previously generated invoices.</CardDescription>
             </div>
             <Button variant="outline" size="sm" onClick={handleRefreshInvoices} disabled={isRefreshingInvoices || isLoadingProp}>
-                <RefreshCw className={`mr-2 h-4 w-4 ${isRefreshingInvoices ? 'animate-spin' : ''}`} />
-                {isRefreshingInvoices ? 'Refreshing...' : 'Refresh Invoices'}
+                <RefreshCw className={`mr-2 h-4 w-4 ${isRefreshingInvoices || (isLoadingProp && pastInvoices.length === 0) ? 'animate-spin' : ''}`} />
+                {isRefreshingInvoices || (isLoadingProp && pastInvoices.length === 0) ? 'Refreshing...' : 'Refresh Invoices'}
             </Button>
         </CardHeader>
         <CardContent>
-          {isLoadingProp && pastInvoices.length === 0 ? (
+          {(isLoadingProp && pastInvoices.length === 0) ? (
              <div className="flex items-center justify-center h-40">
                 <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-primary"></div>
                 <p className="ml-3 text-muted-foreground">Loading past invoices...</p>
@@ -336,7 +344,7 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
                 {pastInvoices.length === 0 ? (
                   <TableRow><TableCell colSpan={9} className="text-center py-10 text-muted-foreground">
                     No past invoices found.
-                    {isLoadingProp ? " Still loading..." : ""}
+                    {(isLoadingProp && pastInvoices.length === 0) ? " Still loading..." : ""}
                   </TableCell></TableRow>
                 ) : (
                   pastInvoices.map(invoice => (
@@ -371,12 +379,20 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Edit Invoice: {editingInvoice.invoiceNumber}</DialogTitle>
-              <CardDescription>Update amount paid, payment date, and status for this invoice.</CardDescription>
+              <CardDescription>
+                Enter the new payment amount received. The total paid will be updated cumulatively.
+                Select payment date and adjust status if necessary.
+              </CardDescription>
             </DialogHeader>
-            <div className="grid gap-4 py-4">
+            <div className="space-y-4 py-4">
+              <div className="text-sm">
+                  <p><strong>Grand Total:</strong> ₹{editingInvoice.grandTotal.toFixed(2)}</p>
+                  <p><strong>Current Total Paid:</strong> ₹{editingInvoice.amountPaid.toFixed(2)}</p>
+                  <p className="font-semibold"><strong>Outstanding (Before this payment):</strong> ₹{(editingInvoice.grandTotal - editingInvoice.amountPaid).toFixed(2)}</p>
+              </div>
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="amountPaid" className="text-right col-span-1">Amount Paid</Label>
-                <Input id="amountPaid" type="number" value={editAmountPaid} onChange={e => setEditAmountPaid(e.target.value)} className="col-span-3" placeholder="0.00"/>
+                <Label htmlFor="newPaymentAmount" className="text-right col-span-1">New Payment Amount (₹)</Label>
+                <Input id="newPaymentAmount" type="number" value={editNewPaymentAmount} onChange={e => setEditNewPaymentAmount(e.target.value)} className="col-span-3" placeholder="0.00" step="0.01"/>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="paymentDate" className="text-right col-span-1">Payment Date</Label>
@@ -398,7 +414,7 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
                   </SelectContent>
                 </Select>
               </div>
-               <p className="text-sm text-muted-foreground col-span-4 px-1">Note: Status will be auto-adjusted based on amount paid if not 'Cancelled'.</p>
+               <p className="text-xs text-muted-foreground col-span-4 px-1">Note: Status will be auto-adjusted based on total amount paid if not manually set to 'Cancelled'.</p>
             </div>
             <DialogFooter>
               <DialogClose asChild><Button variant="outline"><XCircle className="mr-2 h-4 w-4"/>Cancel</Button></DialogClose>
