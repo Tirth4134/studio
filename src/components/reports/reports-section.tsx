@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
-import type { SalesRecord, Invoice, InventoryItem } from '@/types';
+import type { SalesRecord, Invoice, InventoryItem, BuyerAddress } from '@/types';
 import { getSalesRecordsFromFirestore, updateInvoiceInFirestore, getInventoryFromFirestore } from '@/lib/firebase';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -21,6 +21,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogC
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 
+// Define cashSaleBuyerAddress here
+const cashSaleBuyerAddress: BuyerAddress = {
+  name: 'Cash Sale Customer',
+  addressLine1: 'N/A',
+  addressLine2: '',
+  gstin: 'N/A',
+  stateNameAndCode: 'N/A',
+  contact: 'N/A',
+  email: '',
+};
 
 interface AggregatedProfitDataPoint {
   date: string; // Formatted for display
@@ -34,15 +44,15 @@ interface ReportsSectionProps {
   onInvoiceUpdate: (updatedInvoice: Invoice) => void;
   isLoading: boolean;
   fetchPastInvoices: () => Promise<void>;
-  inventoryItems: InventoryItem[]; // Added inventoryItems prop
+  inventoryItems: InventoryItem[]; 
 }
 
 
 export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoading: isLoadingProp, fetchPastInvoices, inventoryItems: propInventoryItems }: ReportsSectionProps) {
   console.log("[ReportsSection] Rendering. Received pastInvoices count:", pastInvoices.length, "isLoadingProp:", isLoadingProp);
   const [salesRecords, setSalesRecords] = useState<SalesRecord[]>([]);
-  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>(propInventoryItems); // Use prop for initial state
-  const [isDataLoading, setIsDataLoading] = useState(true); // For sales records and internal inventory if needed
+  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>(propInventoryItems); 
+  const [isDataLoading, setIsDataLoading] = useState(true); 
   const [error, setError] = useState<string | null>(null);
   const [timeRangeOption, setTimeRangeOption] = useState<string>('last30days');
   const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>(undefined);
@@ -56,7 +66,7 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
   const [isRefreshingInvoices, setIsRefreshingInvoices] = useState(false);
 
   useEffect(() => {
-     setInventoryItems(propInventoryItems); // Sync inventoryItems state if prop changes
+     setInventoryItems(propInventoryItems); 
   }, [propInventoryItems]);
 
 
@@ -66,29 +76,29 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
     const fetchReportData = async () => {
       setError(null);
       try {
-        // Sales records are fetched here, inventory comes from props now
         const fetchedSalesRecords = await getSalesRecordsFromFirestore();
         setSalesRecords(fetchedSalesRecords);
         console.log(`[ReportsSection] Successfully fetched ${fetchedSalesRecords.length} sales records.`);
-        // If inventory wasn't passed or is empty, consider fetching it as a fallback, though ideally it's always from props.
+        
         if (!inventoryItems || inventoryItems.length === 0) {
-            console.log("[ReportsSection] Inventory from props is empty, fetching as fallback.");
+            console.log("[ReportsSection] Inventory from props is empty or not yet available, fetching as fallback.");
             const fetchedInventoryItems = await getInventoryFromFirestore();
             setInventoryItems(fetchedInventoryItems);
             console.log(`[ReportsSection] Fallback: Fetched ${fetchedInventoryItems.length} inventory items.`);
+        } else {
+            console.log("[ReportsSection] Using inventory from props. Count:", inventoryItems.length);
         }
 
       } catch (err: any) {
-        console.error("[ReportsSection] Error fetching report data (sales records):", err);
-        setError(`Failed to load sales records. ${err.message || 'Please try again later.'} This might be due to a missing Firestore index. Check the browser console for a link to create it.`);
+        console.error("[ReportsSection] Error fetching report data (sales records or inventory fallback):", err);
+        setError(`Failed to load report data. ${err.message || 'Please try again later.'} This might be due to a missing Firestore index. Check the browser console for a link to create it.`);
       } finally {
         setIsDataLoading(false);
-        console.log("[ReportsSection] Report data fetch (sales records) finished.");
+        console.log("[ReportsSection] Report data fetch (sales/inventory) finished.");
       }
     };
     fetchReportData();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // inventoryItems removed from deps as it's now a prop for initial load
+  }, [inventoryItems]); 
 
   const handleRefreshInvoices = async () => {
     console.log("[ReportsSection] handleRefreshInvoices called.");
@@ -105,12 +115,18 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
     }
   };
 
- const processedChartData = useMemo(() => {
-    console.log("[ReportsSection] Recomputing processedChartData. Past Invoices:", pastInvoices.length, "Sales Records:", salesRecords.length, "Inventory Items:", inventoryItems.length);
-    if (isLoadingProp && pastInvoices.length === 0 && inventoryItems.length === 0 && isDataLoading) {
-        console.log("[ReportsSection] processedChartData: Waiting for all data (pastInvoices, inventoryItems, salesRecords).");
+  const processedChartData = useMemo(() => {
+    console.log("[ReportsSection] Recomputing processedChartData. Past Invoices:", pastInvoices.length, "Sales Records:", salesRecords.length, "Inventory Items:", inventoryItems.length, "isLoadingProp:", isLoadingProp, "isDataLoading (internal for SR/Inv):", isDataLoading);
+
+    if (isLoadingProp || isDataLoading) {
+        console.log("[ReportsSection] processedChartData: Waiting for data (pastInvoices from prop, or salesRecords/inventoryItems internal fetch).");
         return [];
     }
+    if (pastInvoices.length === 0 && inventoryItems.length === 0) {
+        console.log("[ReportsSection] processedChartData: No past invoices or inventory items to process for chart.");
+        return [];
+    }
+
 
     const now = new Date();
     let startDate: Date;
@@ -145,9 +161,9 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
                     allDates.sort((a,b) => a.getTime() - b.getTime());
                     startDate = allDates[0];
                 } else {
-                    startDate = subDays(now, 30); // Fallback if no dates found
+                    startDate = subDays(now, 30); 
                 }
-                endDate = now; // Ensure endDate is today for 'allTime' or if allDates is empty
+                endDate = now; 
                 break;
         }
     }
@@ -159,14 +175,19 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
     const aggregatedMap: Record<string, { profit: number; loss: number, originalDate: string }> = {};
     const daysDiff = differenceInDays(normalizedEndDate, normalizedStartDate);
     let aggregationFormat = 'yyyy-MM-dd';
-    if (daysDiff > 90) aggregationFormat = 'yyyy-MM'; // Aggregate by month for longer periods
+    if (daysDiff > 90) aggregationFormat = 'yyyy-MM'; 
 
     // 1. Process Sales-related Profit/Loss from Paid Invoices
+    console.log(`[ReportsSection] Processing ${pastInvoices.length} past invoices for chart...`);
     pastInvoices.forEach(invoice => {
-        if (!invoice.latestPaymentDate || invoice.amountPaid <= 0) return;
+        if (!invoice.latestPaymentDate || invoice.amountPaid <= 0) {
+            // console.log(`[ReportsSection] Skipping invoice ${invoice.invoiceNumber}: no payment date or amount paid.`);
+            return;
+        }
 
         const paymentDate = parseISO(invoice.latestPaymentDate);
         if (!isValid(paymentDate) || paymentDate < normalizedStartDate || paymentDate > normalizedEndDate) {
+            // console.log(`[ReportsSection] Skipping invoice ${invoice.invoiceNumber}: payment date ${invoice.latestPaymentDate} out of range.`);
             return;
         }
 
@@ -195,25 +216,31 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
             const lossAmount = Math.abs(realizedProfitOrLoss);
             aggregatedMap[dateKey].loss += lossAmount;
         }
+        // console.log(`[ReportsSection] Invoice ${invoice.invoiceNumber}: Payment Date ${dateKey}, Realized P/L ${realizedProfitOrLoss.toFixed(2)}. Aggregated Profit: ${aggregatedMap[dateKey].profit.toFixed(2)}, Loss: ${aggregatedMap[dateKey].loss.toFixed(2)}`);
     });
 
     // 2. Process Inventory Purchase Costs
+    console.log(`[ReportsSection] Processing ${inventoryItems.length} inventory items for chart...`);
     inventoryItems.forEach(item => {
-        if (!item.purchaseDate || !item.buyingPrice || item.buyingPrice <= 0) return;
+        if (!item.purchaseDate || !item.buyingPrice || item.buyingPrice <= 0) {
+            // console.log(`[ReportsSection] Skipping inventory item ${item.name}: no purchase date or buying price.`);
+            return;
+        }
         
         const purchaseDate = parseISO(item.purchaseDate);
         if (!isValid(purchaseDate) || purchaseDate < normalizedStartDate || purchaseDate > normalizedEndDate) {
+            // console.log(`[ReportsSection] Skipping inventory item ${item.name}: purchase date ${item.purchaseDate} out of range.`);
             return;
         }
 
         const dateKey = format(purchaseDate, aggregationFormat);
         if (!aggregatedMap[dateKey]) aggregatedMap[dateKey] = { profit: 0, loss: 0, originalDate: dateKey };
         
-        console.log(`[ReportsSection] Inventory Item ${item.name}, PurchaseDate: ${dateKey}, BuyingPrice: ${item.buyingPrice.toFixed(2)}, added to loss.`);
         aggregatedMap[dateKey].loss += item.buyingPrice;
+        // console.log(`[ReportsSection] Inventory Item ${item.name}: Purchase Date ${dateKey}, Buying Price ${item.buyingPrice.toFixed(2)}. Aggregated Loss: ${aggregatedMap[dateKey].loss.toFixed(2)}`);
     });
     
-    console.log("[ReportsSection] Aggregated Map for chart:", JSON.parse(JSON.stringify(aggregatedMap)));
+    // console.log("[ReportsSection] Aggregated Map for chart:", JSON.parse(JSON.stringify(aggregatedMap)));
 
     let displayFormat = 'dd MMM';
     if (aggregationFormat === 'yyyy-MM') displayFormat = 'MMM yyyy';
@@ -223,7 +250,7 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
           let dateForDisplay;
           if (aggregationFormat === 'yyyy-MM-dd') {
             dateForDisplay = format(parseISO(dateKey), displayFormat);
-          } else { // 'yyyy-MM'
+          } else { 
             const [year, month] = dateKey.split('-');
             dateForDisplay = format(new Date(parseInt(year), parseInt(month) -1), displayFormat);
           }
@@ -235,23 +262,23 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
         return dateA.getTime() - dateB.getTime();
       });
     
-    console.log("[ReportsSection] Final Processed Chart Data:", finalChartData);
+    console.log("[ReportsSection] Final Processed Chart Data (first 5):", finalChartData.slice(0,5));
     return finalChartData;
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pastInvoices, salesRecords, inventoryItems, timeRangeOption, customDateRange, isLoadingProp, isDataLoading]);
 
 
   const summaryStats = useMemo(() => {
+    console.log("[ReportsSection] Recomputing summaryStats from processedChartData length:", processedChartData.length);
     const totalProfit = processedChartData.reduce((sum, item) => sum + item.profit, 0);
     const totalLoss = processedChartData.reduce((sum, item) => sum + item.loss, 0);
     const netProfit = totalProfit - totalLoss;
 
     console.log(`[ReportsSection] Summary Stats: Total Profit: ${totalProfit.toFixed(2)}, Total Loss: ${totalLoss.toFixed(2)}, Net Profit: ${netProfit.toFixed(2)}`);
-    console.log("[ReportsSection] Detailed breakdown for summaryStats.totalLoss:");
-    processedChartData.forEach(pd => {
-        if(pd.loss > 0) console.log(` - Date ${pd.originalDate}: Loss ${pd.loss.toFixed(2)}`);
-    });
+    // Detailed logging for loss sources (can be very verbose, enable if needed)
+    // processedChartData.forEach(pd => {
+    //     if(pd.loss > 0) console.log(` - Date ${pd.originalDate}: Loss ${pd.loss.toFixed(2)}`);
+    // });
     
     return { totalProfit, totalLoss, netProfit };
   }, [processedChartData]);
@@ -263,7 +290,7 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
 
   const handleEditInvoiceStatus = (invoice: Invoice) => {
     setEditingInvoice(invoice);
-    setEditNewPaymentAmount(''); // For entering new payment amount
+    setEditNewPaymentAmount(''); 
     setEditStatus(invoice.status);
     setEditPaymentDate(invoice.latestPaymentDate && isValid(parseISO(invoice.latestPaymentDate)) ? parseISO(invoice.latestPaymentDate) : new Date());
     setIsEditDialogOpen(true);
@@ -284,16 +311,23 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
 
     const currentTotalPaid = editingInvoice.amountPaid || 0;
     const updatedTotalPaid = currentTotalPaid + newPaymentAmountNum;
-
-    // Using a small epsilon for floating point comparisons
-    const epsilon = 0.001; 
     const grandTotalNum = editingInvoice.grandTotal;
+    
+    // Use a small epsilon for floating point comparisons
+    const epsilon = 0.01; // For currency, typically 1 cent or less
 
     let newStatus = editStatus;
-    if (editStatus !== 'Cancelled') {
-        if (updatedTotalPaid <= epsilon) newStatus = 'Unpaid'; // Effectively zero or less
-        else if (updatedTotalPaid < grandTotalNum - epsilon) newStatus = 'Partially Paid';
-        else newStatus = 'Paid'; // Covers updatedTotalPaid >= grandTotalNum
+    if (editStatus !== 'Cancelled') { // Only auto-update status if not manually set to 'Cancelled'
+        if (updatedTotalPaid <= epsilon) { // Effectively zero or less
+            newStatus = 'Unpaid';
+        } else if (Math.abs(updatedTotalPaid - grandTotalNum) < epsilon) { // Effectively equal
+            newStatus = 'Paid';
+        } else if (updatedTotalPaid < grandTotalNum - epsilon) { // Paid some, but less than total
+            newStatus = 'Partially Paid';
+        } else { // updatedTotalPaid > grandTotalNum + epsilon (Overpaid)
+            newStatus = 'Paid'; // Or 'Overpaid' if you want to track that specifically
+            console.warn(`Invoice ${editingInvoice.invoiceNumber} overpaid. Total paid: ${updatedTotalPaid}, Grand Total: ${grandTotalNum}`);
+        }
     }
     
     const formattedPaymentDate = formatISO(editPaymentDate, { representation: 'date' });
@@ -312,7 +346,7 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
         status: newStatus,
         latestPaymentDate: formattedPaymentDate,
       };
-      onInvoiceUpdate(fullyUpdatedInvoice); // Update parent state
+      onInvoiceUpdate(fullyUpdatedInvoice); 
       toast({ title: "Invoice Updated", description: `Payment status for invoice ${editingInvoice.invoiceNumber} updated.` });
       setIsEditDialogOpen(false);
       setEditingInvoice(null);
@@ -323,16 +357,16 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
 
   const getStatusBadgeVariant = (status: Invoice['status']): "default" | "secondary" | "destructive" | "outline" => {
     switch (status) {
-      case 'Paid': return 'default'; // Typically green, using 'default' shadcn
-      case 'Partially Paid': return 'secondary'; // Typically yellow/orange, using 'secondary'
-      case 'Unpaid': return 'destructive'; // Typically red
-      case 'Cancelled': return 'outline'; // Neutral
+      case 'Paid': return 'default'; 
+      case 'Partially Paid': return 'secondary'; 
+      case 'Unpaid': return 'destructive'; 
+      case 'Cancelled': return 'outline'; 
       default: return 'outline';
     }
   };
 
 
-  if (isLoadingProp && pastInvoices.length === 0 && isDataLoading && inventoryItems.length === 0) {
+  if (isLoadingProp && pastInvoices.length === 0 && inventoryItems.length === 0 && isDataLoading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
@@ -396,7 +430,7 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
           </div>
         </CardHeader>
         <CardContent className="pt-6">
-          {(isDataLoading || (isLoadingProp && pastInvoices.length === 0)) && processedChartData.length === 0 ? (
+          {(isDataLoading || isLoadingProp) && processedChartData.length === 0 ? (
              <div className="flex items-center justify-center h-40">
                 <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-primary"></div>
                 <p className="ml-3 text-muted-foreground">Loading profit/loss chart data...</p>
@@ -470,7 +504,7 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
                         </Badge>
                       </TableCell>
                       <TableCell className="text-center">
-                        {invoice.buyerName !== cashSaleBuyerAddress.name && invoice.status !== 'Cancelled' && ( // Don't allow editing status of Cash Sale or Cancelled
+                        {invoice.buyerName !== cashSaleBuyerAddress.name && invoice.status !== 'Cancelled' && ( 
                           <Button variant="outline" size="sm" onClick={() => handleEditInvoiceStatus(invoice)}>
                             <Edit className="mr-1 h-3 w-3" /> Edit Status
                           </Button>
@@ -492,8 +526,8 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
             <DialogHeader>
               <DialogTitle>Edit Invoice: {editingInvoice.invoiceNumber}</DialogTitle>
               <CardDescription>
-                Current Grand Total: ₹{editingInvoice.grandTotal.toFixed(2)} <br />
-                Current Amount Paid: ₹{(editingInvoice.amountPaid || 0).toFixed(2)} <br />
+                Grand Total: ₹{editingInvoice.grandTotal.toFixed(2)} <br />
+                Current Total Paid: ₹{(editingInvoice.amountPaid || 0).toFixed(2)} <br />
                 Outstanding (Before this payment): ₹{(editingInvoice.grandTotal - (editingInvoice.amountPaid || 0)).toFixed(2)} <br />
                 Enter the new payment amount received. This will be added to the current amount paid. Select the date of this payment.
               </CardDescription>
@@ -535,3 +569,4 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
     </div>
   );
 }
+
