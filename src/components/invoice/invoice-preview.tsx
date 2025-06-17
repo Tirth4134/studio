@@ -119,13 +119,12 @@ export default function InvoicePreview({
     
     if (decimalPart > 0) {
       let पैसाWord = convertHundreds(decimalPart);
-      // Ensure "Paise" is appended correctly, even if convertHundreds returns empty string for 00
-      if (decimalPart > 0 && पैसाWord.trim() === "") पैसाWord = ones[decimalPart] || ""; // Fallback if needed
+      if (decimalPart > 0 && पैसाWord.trim() === "") पैसाWord = ones[decimalPart] || ""; 
       if (पैसाWord.trim() !== "") result += " and " + पैसाWord + "Paise";
     }
     
     result += " Only";
-    return result.trim().replace(/\s+/g, ' '); // Remove extra spaces
+    return result.trim().replace(/\s+/g, ' '); 
   };
 
   const numItems = invoiceItems.length;
@@ -144,7 +143,7 @@ export default function InvoicePreview({
 
   return (
     <div className="max-w-4xl mx-auto bg-white print-container">
-      <div className=""> {/* Removed border border-gray-400, handled by print-container */}
+      <div className=""> 
         <div className="text-center py-3 bg-gray-50 border-b card-header">
           <h1 className="text-lg font-bold">TAX INVOICE</h1>
         </div>
@@ -224,6 +223,7 @@ export default function InvoicePreview({
                 <th className="p-1 text-center slno-col">SI</th>
                 <th className="p-1 text-left description-col">Description of Goods</th>
                 <th className="p-1 text-center hsn-col">HSN/SAC</th>
+                <th className="p-1 text-center gst-percent-col">GST %</th>
                 <th className="p-1 text-center quantity-col">Quantity</th>
                 <th className="p-1 text-center rate-col">Rate</th>
                 <th className="p-1 text-center per-col">per</th>
@@ -234,7 +234,7 @@ export default function InvoicePreview({
             <tbody>
               {invoiceItems.length === 0 && emptyRowsToRender > 0 ? (
                  <tr> 
-                   <td colSpan={8} className="text-center p-4 border-r">No items added to invoice.</td>
+                   <td colSpan={9} className="text-center p-4 border-r">No items added to invoice.</td>
                  </tr>
               ) : (
                 invoiceItems.map((item, index) => (
@@ -242,6 +242,7 @@ export default function InvoicePreview({
                     <td className="p-1 text-center">{index + 1}</td>
                     <td className="p-1">{item.name}</td>
                     <td className="p-1 text-center">{item.hsnSac || 'N/A'}</td>
+                    <td className="p-1 text-center">{item.gstRate !== undefined ? `${item.gstRate.toFixed(2)}%` : 'N/A'}</td>
                     <td className="p-1 text-center">{item.quantity} PCS</td>
                     <td className="p-1 text-right">{item.price.toFixed(2)}</td>
                     <td className="p-1 text-center">PCS</td>
@@ -265,6 +266,7 @@ export default function InvoicePreview({
                   <td className="p-1">&nbsp;</td>
                   <td className="p-1 text-center">&nbsp;</td>
                   <td className="p-1 text-center">&nbsp;</td>
+                  <td className="p-1 text-center">&nbsp;</td>
                   <td className="p-1 text-right">&nbsp;</td>
                   <td className="p-1 text-center">&nbsp;</td>
                   <td className="p-1 text-right">&nbsp;</td>
@@ -272,7 +274,7 @@ export default function InvoicePreview({
                 </tr>
               ))}
               <tr className="border-b font-semibold bg-gray-50 print-grand-total-row">
-                <td colSpan={3} className="p-1 text-right">Total</td>
+                <td colSpan={4} className="p-1 text-right">Total</td>
                 <td className="p-1 text-center">{totalQuantity} PCS</td>
                 <td className="p-1">&nbsp;</td>
                 <td className="p-1">&nbsp;</td>

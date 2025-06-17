@@ -352,10 +352,11 @@ body {
     font-weight: bold !important;
   }
   .print-container .print-items-table .slno-col { width: 3% !important; }
-  .print-container .print-items-table .description-col { width: 37% !important; word-break: break-word !important; }
-  .print-container .print-items-table .hsn-col { width: 15% !important; word-break: break-word !important;}
+  .print-container .print-items-table .description-col { width: 35% !important; word-break: break-word !important; }
+  .print-container .print-items-table .hsn-col { width: 12% !important; word-break: break-word !important;}
+  .print-container .print-items-table .gst-percent-col { width: 7% !important; text-align: center !important; }
   .print-container .print-items-table .quantity-col { width: 8% !important; text-align: right !important; }
-  .print-container .print-items-table .rate-col { width: 12% !important; text-align: right !important; }
+  .print-container .print-items-table .rate-col { width: 10% !important; text-align: right !important; }
   .print-container .print-items-table .per-col { width: 8% !important; text-align: right !important; }
   .print-container .print-items-table .amount-col { width: 17% !important; text-align: right !important; }
 
