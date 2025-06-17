@@ -394,7 +394,7 @@ export const getSalesRecordsFromFirestore = async (): Promise<SalesRecord[]> => 
       const data = docSnap.data();
       records.push({
         id: docSnap.id,
-        invoiceNumber: data.invoiceNumber || "N/A",
+        invoiceNumber: data.invoiceNumber || "N/A", // This can be INV-XXXX or DS-XXXX
         saleDate: typeof data.saleDate === 'string' ? data.saleDate : new Date().toLocaleDateString('en-CA'),
         itemId: data.itemId || "N/A",
         itemName: data.itemName || "N/A",
@@ -534,7 +534,7 @@ export const getInvoicesFromFirestore = async (): Promise<Invoice[]> => {
     return invoices;
   } catch (error) {
     console.error("[Firebase] Error fetching invoices from Firestore:", error);
-    return [];
+    throw error; // Re-throw to be caught by calling function
   }
 };
 
@@ -573,14 +573,14 @@ export const updateInvoiceInFirestore = async (invoiceNumber: string, updates: P
         let newStatus = updates.status ?? currentData.status ?? 'Unpaid';
 
         if (newStatus !== 'Cancelled') {
-            const epsilon = 0.01;
-            if (Math.abs(newAmountPaid - grandTotal) < epsilon && grandTotal > 0) {
+            const epsilon = 0.01; // Small tolerance for floating point comparisons
+            if (Math.abs(newAmountPaid - grandTotal) < epsilon && grandTotal > 0) { // Paid in full
                 newStatus = 'Paid';
-            } else if (newAmountPaid > 0 && newAmountPaid < grandTotal - epsilon) {
+            } else if (newAmountPaid > 0 && newAmountPaid < grandTotal - epsilon) { // Partially paid
                 newStatus = 'Partially Paid';
-            } else if (newAmountPaid <= 0 && newStatus !== 'Paid' && newStatus !== 'Partially Paid') { 
+            } else if (newAmountPaid <= 0 && newStatus !== 'Paid' && newStatus !== 'Partially Paid') { // Unpaid (and not already partially or fully paid by mistake)
                  newStatus = 'Unpaid';
-            } else if (newAmountPaid >= grandTotal - epsilon) { 
+            } else if (newAmountPaid >= grandTotal - epsilon) { // Covers Paid and Overpaid
                  newStatus = 'Paid';
             }
         }
@@ -684,7 +684,7 @@ export const getDirectSaleLogEntriesFromFirestore = async (): Promise<DirectSale
       }
 
       entries.push({
-        id: finalDirectSaleNumber, // Using finalDirectSaleNumber for the id field to match the document ID
+        id: finalDirectSaleNumber, 
         directSaleNumber: finalDirectSaleNumber,
         saleDate: finalSaleDate,
         items: (data.items || []).map((item: any, index: number) => ({
@@ -705,10 +705,11 @@ export const getDirectSaleLogEntriesFromFirestore = async (): Promise<DirectSale
     return entries;
   } catch (error) {
     console.error("[Firebase] Error fetching direct sale log entries:", error);
-    return [];
+    throw error; // Re-throw to be caught by calling function
   }
 };
 
 
 export { db, auth, User };
 export type { InventoryItem, BuyerAddress, BuyerProfile, AppSettingsType, SalesRecord, Invoice, InvoiceLineItem, DirectSaleLogEntry, DirectSaleItemDetail };
+
