@@ -79,8 +79,8 @@ export default function HomePage() {
     console.log("[HomePage] Mounted, isClient set to true.");
   }, []);
 
-  const fetchPastSalesData = useCallback(async () => {
-    console.log("[HomePage] fetchPastSalesData called (fetches both invoices and direct sales).");
+  const fetchPastSalesData = useCallback(async (isInitialLoad: boolean = false) => {
+    console.log("[HomePage] fetchPastSalesData called. isInitialLoad:", isInitialLoad);
     try {
       const [fetchedInvoices, fetchedDirectSales] = await Promise.all([
         getInvoicesFromFirestore(),
@@ -91,14 +91,14 @@ export default function HomePage() {
       setPastDirectSalesLog(fetchedDirectSales);
     } catch (error: any) {
       console.error("[HomePage] Error fetching past invoices or direct sales:", error);
-      // If it's a refresh error (isLoading is false) and data was previously loaded, don't wipe it.
-      if (isLoading) {
+      if (isInitialLoad) {
           setPastInvoices([]);
           setPastDirectSalesLog([]);
       }
-      toast({ title: "Error Fetching Sales History", description: `Could not fetch past sales. ${isLoading ? '' : 'Existing data (if any) is shown. '}Error: ${error.message}`, variant: "destructive" });
+      toast({ title: "Error Fetching Sales History", description: `Could not fetch past sales. ${isInitialLoad ? '' : 'Existing data (if any) is shown. '}Error: ${error.message}`, variant: "destructive" });
     }
-  }, [toast, isLoading]); // isLoading dependency added to control error handling behavior
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [toast]); 
 
   useEffect(() => {
     if (isClient) {
@@ -106,21 +106,16 @@ export default function HomePage() {
         console.log("[HomePage] fetchData triggered (isClient true).");
         setIsLoading(true);
         try {
-          // Fetch inventory and settings first
           const firestoreInventory = await getInventoryFromFirestore();
           console.log("[HomePage] fetchData: Fetched inventory from Firestore:", firestoreInventory.length, "items.");
           const appSettings = await getAppSettingsFromFirestore(initialBuyerAddressGlobal);
           console.log("[HomePage] fetchData: Fetched app settings. InvoiceCounter:", appSettings.invoiceCounter, "DirectSaleCounter:", appSettings.directSaleCounter);
-
-          // Then fetch past sales data using the callback
-          await fetchPastSalesData();
-          console.log("[HomePage] fetchData: Past invoices and direct sales fetched using combined function.");
           
-          const currentInvoices = pastInvoices; // Use the state updated by fetchPastSalesData or previous state
-          const currentDirectSalesLog = pastDirectSalesLog;
+          await fetchPastSalesData(true); // Pass true for isInitialLoad
 
-          // Seeding logic (only if everything is truly empty)
-          if (firestoreInventory.length === 0 && appSettings.invoiceCounter === 1 && appSettings.directSaleCounter === 1 && appSettings.buyerAddress.name === initialBuyerAddressGlobal.name && currentInvoices.length === 0 && currentDirectSalesLog.length === 0) {
+          // Seeding logic (relies on states being updated by fetchPastSalesData if it succeeded)
+          // If fetchPastSalesData(true) failed, it would have cleared pastInvoices and pastDirectSalesLog
+          if (firestoreInventory.length === 0 && appSettings.invoiceCounter === 1 && appSettings.directSaleCounter === 1 && appSettings.buyerAddress.name === initialBuyerAddressGlobal.name && pastInvoices.length === 0 && pastDirectSalesLog.length === 0) {
             toast({
                 title: "Initializing Database",
                 description: "No existing data found. Seeding with default data...",
@@ -141,9 +136,9 @@ export default function HomePage() {
             setInvoiceCounter(initialSettingsToSave.invoiceCounter);
             setDirectSaleCounter(initialSettingsToSave.directSaleCounter);
             setBuyerAddress(initialSettingsToSave.buyerAddress);
-            // pastInvoices and pastDirectSalesLog should be empty here if seeding
-            setPastInvoices([]); 
-            setPastDirectSalesLog([]);
+            // pastInvoices and pastDirectSalesLog should be empty here if seeding (or cleared by failed fetchPastSalesData(true))
+             setPastInvoices([]); 
+             setPastDirectSalesLog([]);
             toast({
                 title: "Application Initialized",
                 description: "Default data loaded into the database.",
@@ -155,8 +150,7 @@ export default function HomePage() {
             setInvoiceCounter(appSettings.invoiceCounter);
             setDirectSaleCounter(appSettings.directSaleCounter);
             setBuyerAddress(appSettings.buyerAddress);
-            // Past invoices and direct sales are already set by fetchPastSalesData if it ran
-            // If fetchPastSalesData hasn't run yet (e.g. first render), they'll be updated by it.
+            // Past invoices and direct sales are already set by fetchPastSalesData
             toast({
                 title: "Data Loaded",
                 description: "Successfully fetched inventory, settings, and sales history from Firestore.",
@@ -166,7 +160,6 @@ export default function HomePage() {
           }
         } catch (error: any) {
             console.error("[HomePage] fetchData: Error during initial data fetch or processing:", error);
-            // Set to defaults/empty on major error
             setInventory([]);
             setInvoiceCounter(1);
             setDirectSaleCounter(1);
@@ -187,7 +180,7 @@ export default function HomePage() {
       fetchData();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isClient, toast, fetchPastSalesData]); // fetchPastSalesData is stable due to useCallback
+  }, [isClient, toast]); // Removed fetchPastSalesData from dependency array, it's now called directly.
 
   useEffect(() => {
     setCurrentInvoiceNumber(generateInvoiceNumber(invoiceCounter));
@@ -874,7 +867,7 @@ export default function HomePage() {
             onFinalizeDirectSale={handleFinalizeDirectSale}
             isFinalizing={isFinalizingDirectSale}
             pastDirectSalesLog={pastDirectSalesLog}
-            fetchPastDirectSalesLog={fetchPastSalesData}
+            fetchPastDirectSalesLog={() => fetchPastSalesData(false)} // Pass false for isInitialLoad
           />
         )}
         {activeSection === 'reports' && (
@@ -883,7 +876,7 @@ export default function HomePage() {
             pastDirectSalesLog={pastDirectSalesLog}
             onInvoiceUpdate={handleInvoiceUpdate}
             isLoading={isLoading}
-            fetchPastSalesData={fetchPastSalesData}
+            fetchPastSalesData={() => fetchPastSalesData(false)} // Pass false for isInitialLoad
             inventoryItems={inventory}
           />
         )}
@@ -895,3 +888,5 @@ export default function HomePage() {
     </div>
   );
 }
+
+    
