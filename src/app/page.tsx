@@ -25,7 +25,6 @@ import {
   saveSalesRecordsToFirestore,
   saveInvoiceToFirestore, 
   getInvoicesFromFirestore,
-  updateInvoiceInFirestore
 } from '@/lib/firebase';
 
 const todayForSeed = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD
@@ -59,7 +58,7 @@ export default function HomePage() {
   const [isShortcutsDialogOpen, setIsShortcutsDialogOpen] = useState(false);
   const { toast } = useToast();
   const [isClient, setIsClient] = useState(false);
-  const [isLoading, setIsLoading] = useState(true); // Main loading state for initial data
+  const [isLoading, setIsLoading] = useState(true); 
   const [isPrinting, setIsPrinting] = useState(false);
   const [searchedBuyerProfiles, setSearchedBuyerProfiles] = useState<BuyerProfile[]>([]);
 
@@ -82,7 +81,7 @@ export default function HomePage() {
     } catch (error: any) {
       console.error("[HomePage] fetchPastInvoices: Error fetching past invoices:", error);
       toast({ title: "Error Fetching Past Invoices", description: `Could not fetch past invoices. ${error.message}`, variant: "destructive" });
-      setPastInvoices([]); // Ensure it's an empty array on error
+      setPastInvoices([]); 
     }
   }, [toast]);
 
@@ -97,7 +96,10 @@ export default function HomePage() {
           const appSettings = await getAppSettingsFromFirestore(initialBuyerAddressGlobal);
           console.log("[HomePage] fetchData: Fetched app settings from Firestore. Counter:", appSettings.invoiceCounter);
           
-          await fetchPastInvoices(); // Crucial call for past invoices
+          // Fetch past invoices as part of initial data load
+          await fetchPastInvoices(); 
+          console.log("[HomePage] fetchData: Past invoices fetched.");
+
 
           if (firestoreInventory.length === 0 && appSettings.invoiceCounter === 1 && appSettings.buyerAddress.name === initialBuyerAddressGlobal.name) {
             toast({
@@ -130,7 +132,7 @@ export default function HomePage() {
             setBuyerAddress(appSettings.buyerAddress); 
              toast({
                 title: "Data Loaded",
-                description: "Successfully fetched data from Firestore.",
+                description: "Successfully fetched inventory, settings, and past invoices from Firestore.",
                 variant: "default",
                 duration: 3000,
             });
@@ -155,7 +157,7 @@ export default function HomePage() {
       fetchData();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isClient, toast, fetchPastInvoices]); // fetchPastInvoices is stable due to useCallback
+  }, [isClient, toast]); // Removed fetchPastInvoices from here as it's called within
 
   useEffect(() => {
     setCurrentInvoiceNumber(generateInvoiceNumber(invoiceCounter));
@@ -231,7 +233,7 @@ export default function HomePage() {
           salesRecordsToSave.push({
             id: generateUniqueId(), 
             invoiceNumber: currentInvoiceNumber,
-            saleDate: invoiceDate,
+            saleDate: invoiceDate, // This is the invoice date
             itemId: invoiceItem.id,
             itemName: invoiceItem.name,
             category: inventoryItem.category, 
@@ -245,11 +247,17 @@ export default function HomePage() {
         }
       }
 
+      let invoiceSavedSuccessfully = false;
+      let salesRecordsSavedSuccessfully = false;
+
       if (salesRecordsToSave.length > 0) {
           console.log("[HomePage] handlePrintInvoice: Attempting to save sales records:", salesRecordsToSave.length, "records.");
           await saveSalesRecordsToFirestore(salesRecordsToSave);
+          salesRecordsSavedSuccessfully = true;
           toast({ title: "Sales Recorded", description: `${salesRecordsToSave.length} item sales recorded successfully for profit tracking.`, variant: "default", duration: 4000 });
           console.log("[HomePage] handlePrintInvoice: Sales records saved successfully.");
+      } else {
+          salesRecordsSavedSuccessfully = true; // No records to save is also a "success" for this step
       }
       
       const subTotal = invoiceItems.reduce((sum, item) => sum + item.total, 0);
@@ -272,27 +280,34 @@ export default function HomePage() {
         grandTotal: grandTotal,
         amountPaid: 0, 
         status: 'Unpaid', 
-        latestPaymentDate: undefined,
+        latestPaymentDate: undefined, // A new invoice has no payment date yet
       };
 
-      console.log("[HomePage] handlePrintInvoice: Attempting to save invoice. Data:", JSON.stringify(invoiceToSave, null, 2).substring(0, 500) + "..."); // Log part of it
+      console.log("[HomePage] handlePrintInvoice: Attempting to save invoice. Data:", JSON.stringify(invoiceToSave, null, 2).substring(0, 500) + "...");
       await saveInvoiceToFirestore(invoiceToSave); 
+      invoiceSavedSuccessfully = true;
       toast({ title: "Invoice Saved", description: `Invoice ${currentInvoiceNumber} saved successfully to database.`, variant: "default" });
       console.log(`[HomePage] handlePrintInvoice: Invoice ${currentInvoiceNumber} saved successfully to Firestore.`);
       
-      setPastInvoices(prev => [invoiceToSave, ...prev].sort((a, b) => new Date(b.invoiceDate).getTime() - new Date(a.invoiceDate).getTime() || b.invoiceNumber.localeCompare(a.invoiceNumber)));
-      console.log("[HomePage] handlePrintInvoice: Past invoices state updated locally.");
+      // Only if all saves are successful, proceed with local state updates for new invoice
+      if (invoiceSavedSuccessfully && salesRecordsSavedSuccessfully) {
+        setPastInvoices(prev => [invoiceToSave, ...prev].sort((a, b) => new Date(b.invoiceDate).getTime() - new Date(a.invoiceDate).getTime() || b.invoiceNumber.localeCompare(a.invoiceNumber)));
+        console.log("[HomePage] handlePrintInvoice: Past invoices state updated locally.");
 
-      console.log("[HomePage] handlePrintInvoice: Triggering window.print().");
-      window.print();
+        console.log("[HomePage] handlePrintInvoice: Triggering window.print().");
+        window.print();
 
-      updateInvoiceCounterStateAndDb(invoiceCounter + 1);
-      console.log("[HomePage] handlePrintInvoice: Invoice counter updated.");
+        updateInvoiceCounterStateAndDb(invoiceCounter + 1);
+        console.log("[HomePage] handlePrintInvoice: Invoice counter updated.");
       
-      getAppSettingsFromFirestore(initialBuyerAddressGlobal).then(settings => {
-        setBuyerAddress(settings.buyerAddress);
-        console.log("[HomePage] handlePrintInvoice: Buyer address reset from settings for new invoice.");
-      });
+        getAppSettingsFromFirestore(initialBuyerAddressGlobal).then(settings => {
+          setBuyerAddress(settings.buyerAddress);
+          console.log("[HomePage] handlePrintInvoice: Buyer address reset from settings for new invoice.");
+        });
+         setInvoiceItems([]); // Clear current invoice items
+      } else {
+        throw new Error("One or more database save operations failed during invoice finalization.");
+      }
 
     } catch (error) {
         console.error("[HomePage] handlePrintInvoice: CRITICAL ERROR during invoice finalization:", error);
@@ -681,7 +696,7 @@ export default function HomePage() {
       </div>
     );
   }
-  console.log("[HomePage] Rendering. Past invoices count:", pastInvoices.length);
+  console.log("[HomePage] Rendering. Past invoices count for ReportsSection:", pastInvoices.length, "isLoading:", isLoading);
   return (
     <div className="min-h-screen flex flex-col">
       <AppHeader
@@ -722,7 +737,7 @@ export default function HomePage() {
           <ReportsSection 
             pastInvoices={pastInvoices}
             onInvoiceUpdate={handleInvoiceUpdate} 
-            isLoading={isLoading} 
+            isLoading={isLoading} // Pass the main loading state
             fetchPastInvoices={fetchPastInvoices}
           />
         )}

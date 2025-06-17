@@ -2,15 +2,15 @@
 "use client";
 
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
-import type { SalesRecord, Invoice, BuyerAddress } from '@/types';
-import { getSalesRecordsFromFirestore, updateInvoiceInFirestore, getInvoicesFromFirestore } from '@/lib/firebase';
+import type { SalesRecord, Invoice } from '@/types';
+import { getSalesRecordsFromFirestore, updateInvoiceInFirestore } from '@/lib/firebase';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DatePickerWithRange } from "@/components/ui/date-picker-with-range";
 import { DatePicker } from "@/components/ui/date-picker"; 
-import { BarChart3, CalendarDays, AlertTriangle, TrendingUp, TrendingDown, DollarSign, Edit, Save, XCircle, RefreshCw } from 'lucide-react';
+import { BarChart3, AlertTriangle, TrendingUp, TrendingDown, DollarSign, Edit, Save, XCircle, RefreshCw } from 'lucide-react';
 import ProfitLossChart from './profit-loss-chart';
-import { subDays, format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, parseISO, differenceInDays, startOfYear, endOfYear, isValid } from 'date-fns';
+import { subDays, format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, parseISO, differenceInDays, startOfYear, endOfYear, isValid, formatISO } from 'date-fns';
 import type { DateRange } from "react-day-picker";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -22,10 +22,11 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 
 
-interface AggregatedDataPoint {
-  date: string;
+interface AggregatedProfitDataPoint {
+  date: string; // Formatted for display
   profit: number;
-  loss: number;
+  loss: number; 
+  originalDate: string; // yyyy-MM-dd or yyyy-MM, for sorting
 }
 
 interface ReportsSectionProps {
@@ -41,12 +42,12 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
   const [salesRecords, setSalesRecords] = useState<SalesRecord[]>([]);
   const [isSalesRecordsLoading, setIsSalesRecordsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [timeRangeOption, setTimeRangeOption] = useState<string>('last7days'); 
+  const [timeRangeOption, setTimeRangeOption] = useState<string>('last30days'); 
   const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>(undefined);
   
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
   const [isEditDialogOpén, setIsEditDialogOpen] = useState(false);
-  const [editNewPaymentAmount, setEditNewPaymentAmount] = useState<string>(''); // For new payment
+  const [editNewPaymentAmount, setEditNewPaymentAmount] = useState<string>('');
   const [editStatus, setEditStatus] = useState<Invoice['status']>('Unpaid');
   const [editPaymentDate, setEditPaymentDate] = useState<Date | undefined>(new Date());
   const { toast } = useToast();
@@ -59,7 +60,7 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
       setError(null);
       try {
         const records = await getSalesRecordsFromFirestore();
-        setSalesRecords(records.sort((a, b) => new Date(a.saleDate).getTime() - new Date(b.saleDate).getTime()));
+        setSalesRecords(records); // Keep original sort from Firestore if any, or sort later if needed
         console.log("[ReportsSection] Successfully fetched", records.length, "sales records.");
       } catch (err: any) {
         console.error("[ReportsSection] Error fetching sales records:", err);
@@ -80,6 +81,7 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
       toast({title: "Invoices Refreshed", description: "Past invoices list has been updated."});
     } catch (e) {
        console.error("[ReportsSection] Error during manual invoice refresh:", e);
+       toast({title: "Refresh Failed", description: `Could not refresh invoices. ${(e as Error).message}`, variant: "destructive"});
     } finally {
       setIsRefreshingInvoices(false);
       console.log("[ReportsSection] handleRefreshInvoices finished.");
@@ -87,7 +89,9 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
   };
 
   const processedChartData = useMemo(() => {
-    if (salesRecords.length === 0) return [];
+    console.log("[ReportsSection] Recomputing processedChartData. Past Invoices:", pastInvoices.length, "Sales Records:", salesRecords.length);
+    if (pastInvoices.length === 0 || salesRecords.length === 0) return [];
+    
     const now = new Date();
     let startDate: Date;
     let endDate: Date = now;
@@ -105,7 +109,12 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
             case 'lastYear': startDate = startOfYear(subDays(now, 365)); endDate = endOfYear(subDays(now, 365)); break;
             case 'thisYear': startDate = startOfYear(now); endDate = endOfYear(now); break;
             case 'allTime': default:
-                startDate = salesRecords.length > 0 ? parseISO(salesRecords[0].saleDate) : now;
+                // Find earliest payment date from pastInvoices or earliest saleDate from salesRecords
+                const earliestInvoicePaymentDate = pastInvoices
+                    .filter(inv => inv.latestPaymentDate && isValid(parseISO(inv.latestPaymentDate)))
+                    .map(inv => parseISO(inv.latestPaymentDate!))
+                    .sort((a, b) => a.getTime() - b.getTime())[0];
+                startDate = earliestInvoicePaymentDate || (salesRecords.length > 0 ? parseISO(salesRecords[0].saleDate) : now);
                 break;
         }
     }
@@ -113,43 +122,54 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
     const normalizedStartDate = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
     const normalizedEndDate = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate(), 23, 59, 59, 999);
 
-    const filteredRecords = salesRecords.filter(record => {
-      const recordDate = parseISO(record.saleDate); 
-      return isValid(recordDate) && new Date(recordDate.getFullYear(), recordDate.getMonth(), recordDate.getDate()) >= normalizedStartDate && new Date(recordDate.getFullYear(), recordDate.getMonth(), recordDate.getDate()) <= normalizedEndDate;
+    const aggregatedMap: Record<string, { profit: number; loss: number }> = {};
+
+    pastInvoices.forEach(invoice => {
+        if (!invoice.latestPaymentDate || invoice.amountPaid <= 0) return;
+
+        const paymentDate = parseISO(invoice.latestPaymentDate);
+        if (!isValid(paymentDate) || paymentDate < normalizedStartDate || paymentDate > normalizedEndDate) {
+            return;
+        }
+
+        const invoiceSalesRecords = salesRecords.filter(sr => sr.invoiceNumber === invoice.invoiceNumber);
+        if (invoiceSalesRecords.length === 0) return;
+
+        const totalOriginalProfitForInvoice = invoiceSalesRecords.reduce((sum, sr) => sum + sr.totalProfit, 0);
+        
+        // Calculate realized profit based on proportion of amount paid
+        // If grandTotal is 0 (e.g. free item or fully discounted), avoid division by zero
+        const realizedProfitOrLoss = invoice.grandTotal > 0 
+            ? (totalOriginalProfitForInvoice * invoice.amountPaid) / invoice.grandTotal
+            : (invoice.amountPaid > 0 ? totalOriginalProfitForInvoice : 0); // If paid something on 0 total, realize full profit/loss
+
+        const daysDiff = differenceInDays(normalizedEndDate, normalizedStartDate);
+        let aggregationFormat = 'yyyy-MM-dd';
+        if (daysDiff > 90) aggregationFormat = 'yyyy-MM';
+        
+        const dateKey = format(paymentDate, aggregationFormat);
+
+        if (!aggregatedMap[dateKey]) aggregatedMap[dateKey] = { profit: 0, loss: 0 };
+
+        if (realizedProfitOrLoss > 0) {
+            aggregatedMap[dateKey].profit += realizedProfitOrLoss;
+        } else if (realizedProfitOrLoss < 0) {
+            aggregatedMap[dateKey].loss += Math.abs(realizedProfitOrLoss);
+        }
     });
     
-    const aggregatedMap: Record<string, { profit: number; loss: number }> = {};
-    const daysDiff = differenceInDays(normalizedEndDate, normalizedStartDate);
-    let aggregationFormat = 'yyyy-MM-dd'; 
+    const daysDiffForDisplay = differenceInDays(normalizedEndDate, normalizedStartDate);
     let displayFormat = 'dd MMM';
-    if (daysDiff > 90) { 
-      aggregationFormat = 'yyyy-MM'; 
-      displayFormat = 'MMM yyyy';
-    }
-
-
-    filteredRecords.forEach(record => {
-      const saleDateObj = parseISO(record.saleDate);
-      if (!isValid(saleDateObj)) return;
-
-      let dateKey: string;
-      if (aggregationFormat === 'yyyy-MM') dateKey = format(saleDateObj, 'yyyy-MM');
-      else dateKey = format(saleDateObj, 'yyyy-MM-dd');
-      
-      if (!aggregatedMap[dateKey]) aggregatedMap[dateKey] = { profit: 0, loss: 0 };
-      
-      if (record.totalProfit > 0) aggregatedMap[dateKey].profit += record.totalProfit;
-      else if (record.totalProfit < 0) aggregatedMap[dateKey].loss += Math.abs(record.totalProfit); 
-    });
+    if (daysDiffForDisplay > 90) displayFormat = 'MMM yyyy';
 
     return Object.entries(aggregatedMap)
       .map(([dateKey, { profit, loss }]) => {
-          const dateForDisplay = aggregationFormat === 'yyyy-MM' ? format(parseISO(dateKey + '-01'), displayFormat) : format(parseISO(dateKey), displayFormat);
+          const dateForDisplay = displayFormat === 'MMM yyyy' ? format(parseISO(dateKey + '-01'), displayFormat) : format(parseISO(dateKey), displayFormat);
           return { date: dateForDisplay, profit, loss, originalDate: dateKey };
       })
       .sort((a,b) => new Date(a.originalDate).getTime() - new Date(b.originalDate).getTime());
 
-  }, [salesRecords, timeRangeOption, customDateRange]);
+  }, [pastInvoices, salesRecords, timeRangeOption, customDateRange]);
 
   const summaryStats = useMemo(() => {
     const totalProfit = processedChartData.reduce((sum, item) => sum + item.profit, 0);
@@ -165,16 +185,19 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
 
   const handleEditInvoiceStatus = (invoice: Invoice) => {
     setEditingInvoice(invoice);
-    setEditNewPaymentAmount(''); // Reset for new payment entry
+    setEditNewPaymentAmount(''); 
     setEditStatus(invoice.status);
-    setEditPaymentDate(new Date()); // Default to today for new payment
+    setEditPaymentDate(invoice.latestPaymentDate ? parseISO(invoice.latestPaymentDate) : new Date());
     setIsEditDialogOpen(true);
   };
 
   const handleSaveInvoiceUpdate = async () => {
-    if (!editingInvoice || editPaymentDate === undefined) return;
+    if (!editingInvoice || editPaymentDate === undefined) {
+        toast({ title: "Error", description: "No invoice selected for editing or payment date is missing.", variant: "destructive" });
+        return;
+    }
     
-    const newPaymentAmountNum = parseFloat(editNewPaymentAmount) || 0; // Treat empty/invalid as 0
+    const newPaymentAmountNum = parseFloat(editNewPaymentAmount) || 0; 
 
     if (newPaymentAmountNum < 0) {
       toast({ title: "Invalid Amount", description: "Payment amount cannot be negative.", variant: "destructive" });
@@ -184,28 +207,29 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
     const currentTotalPaid = editingInvoice.amountPaid;
     const updatedTotalPaid = currentTotalPaid + newPaymentAmountNum;
 
-    let newStatus = editStatus; // Use user-selected status if 'Cancelled'
-    if (editStatus !== 'Cancelled') { // Auto-determine status if not 'Cancelled'
-        if (updatedTotalPaid <= 0) newStatus = 'Unpaid';
+    let newStatus = editStatus; 
+    if (editStatus !== 'Cancelled') { 
+        if (updatedTotalPaid <= 0 && editingInvoice.grandTotal > 0) newStatus = 'Unpaid';
         else if (updatedTotalPaid < editingInvoice.grandTotal) newStatus = 'Partially Paid';
         else if (updatedTotalPaid >= editingInvoice.grandTotal) newStatus = 'Paid';
+        else if (editingInvoice.grandTotal <= 0 && updatedTotalPaid >=0) newStatus = 'Paid'; // For 0 or negative grand total with any non-negative payment
     }
 
+    const formattedPaymentDate = formatISO(editPaymentDate, { representation: 'date' });
 
     const updatedInvoiceData: Partial<Invoice> = {
       amountPaid: updatedTotalPaid,
       status: newStatus,
-      latestPaymentDate: format(editPaymentDate, 'yyyy-MM-dd'),
+      latestPaymentDate: formattedPaymentDate,
     };
 
     try {
       await updateInvoiceInFirestore(editingInvoice.invoiceNumber, updatedInvoiceData);
-      // Construct the full updated invoice object for local state update
       const fullyUpdatedInvoice: Invoice = {
         ...editingInvoice,
         amountPaid: updatedTotalPaid,
         status: newStatus,
-        latestPaymentDate: format(editPaymentDate, 'yyyy-MM-dd'),
+        latestPaymentDate: formattedPaymentDate,
       };
       onInvoiceUpdate(fullyUpdatedInvoice); 
       toast({ title: "Invoice Updated", description: `Payment status for invoice ${editingInvoice.invoiceNumber} updated.` });
@@ -227,7 +251,7 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
   };
 
 
-  if (isLoadingProp && pastInvoices.length === 0) { 
+  if (isLoadingProp && pastInvoices.length === 0 && isSalesRecordsLoading) { 
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
@@ -241,7 +265,7 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
       <Card className="shadow-lg border-destructive">
         <CardHeader>
           <CardTitle className="flex items-center text-destructive">
-            <AlertTriangle className="mr-2 h-6 w-6" /> Error Loading Sales Report Data
+            <AlertTriangle className="mr-2 h-6 w-6" /> Error Loading Report Data
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -270,28 +294,28 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
             </div>
           </div>
           <CardDescription className="pt-4">
-            Visual overview of your profits and losses. Current View: <span className="font-semibold">
+            Visual overview of your profits and losses based on payment dates. Current View: <span className="font-semibold">
             { timeRangeOption === 'custom' ? (customDateRange?.from ? (customDateRange.to ? `${format(customDateRange.from, "LLL dd, y")} - ${format(customDateRange.to, "LLL dd, y")}`: format(customDateRange.from, "LLL dd, y")) : "Custom Range") :
               timeRangeOption.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
             </span>
           </CardDescription>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
             <Card className="bg-background/70">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Total Profit</CardTitle><TrendingUp className="h-4 w-4 text-green-500" /></CardHeader>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Total Realized Profit</CardTitle><TrendingUp className="h-4 w-4 text-green-500" /></CardHeader>
                 <CardContent><div className="text-2xl font-bold text-green-600">₹{summaryStats.totalProfit.toFixed(2)}</div></CardContent>
             </Card>
             <Card className="bg-background/70">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Total Losses</CardTitle><TrendingDown className="h-4 w-4 text-red-500" /></CardHeader>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Total Realized Losses</CardTitle><TrendingDown className="h-4 w-4 text-red-500" /></CardHeader>
                 <CardContent><div className="text-2xl font-bold text-red-600">₹{summaryStats.totalLoss.toFixed(2)}</div></CardContent>
             </Card>
             <Card className="bg-background/70">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Net Profit</CardTitle><DollarSign className={`h-4 w-4 ${summaryStats.netProfit >= 0 ? 'text-blue-500' : 'text-orange-500'}`} /></CardHeader>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Net Realized Profit</CardTitle><DollarSign className={`h-4 w-4 ${summaryStats.netProfit >= 0 ? 'text-blue-500' : 'text-orange-500'}`} /></CardHeader>
                 <CardContent><div className={`text-2xl font-bold ${summaryStats.netProfit >= 0 ? 'text-blue-600' : 'text-orange-600'}`}>₹{summaryStats.netProfit.toFixed(2)}</div></CardContent>
             </Card>
           </div>
         </CardHeader>
         <CardContent className="pt-6">
-          {isSalesRecordsLoading ? (
+          {isSalesRecordsLoading && pastInvoices.length === 0 ? ( // Show loading for chart if sales records are still loading and no past invoices yet
              <div className="flex items-center justify-center h-40">
                 <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-primary"></div>
                 <p className="ml-3 text-muted-foreground">Loading profit/loss chart data...</p>
@@ -299,9 +323,9 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
           ) : processedChartData.length > 0 ? <ProfitLossChart data={processedChartData} /> : (
             <div className="text-center py-10">
               <BarChart3 className="mx-auto h-12 w-12 text-muted-foreground" />
-              <p className="mt-4 text-muted-foreground">No sales data available for the selected period to display chart.</p>
-              {salesRecords.length > 0 && <p className="text-sm text-muted-foreground">Try selecting a different time range.</p>}
-              {salesRecords.length === 0 && <p className="text-sm text-muted-foreground">Start making sales to see your profit data here!</p>}
+              <p className="mt-4 text-muted-foreground">No realized profit/loss data available for the selected period to display chart.</p>
+              {salesRecords.length > 0 && pastInvoices.length > 0 && <p className="text-sm text-muted-foreground">This could be due to no payments recorded in this period, or no profit on paid invoices.</p>}
+              {(salesRecords.length === 0 || pastInvoices.length === 0) && <p className="text-sm text-muted-foreground">Start making sales and recording payments to see your profit data here!</p>}
             </div>
           )}
         </CardContent>
@@ -315,11 +339,11 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
             </div>
             <Button variant="outline" size="sm" onClick={handleRefreshInvoices} disabled={isRefreshingInvoices || isLoadingProp}>
                 <RefreshCw className={`mr-2 h-4 w-4 ${isRefreshingInvoices || (isLoadingProp && pastInvoices.length === 0) ? 'animate-spin' : ''}`} />
-                {isRefreshingInvoices || (isLoadingProp && pastInvoices.length === 0) ? 'Refreshing...' : 'Refresh Invoices'}
+                {isRefreshingInvoices || (isLoadingProp && pastInvoices.length === 0 && !isRefreshingInvoices) ? 'Refreshing...' : 'Refresh Invoices'}
             </Button>
         </CardHeader>
         <CardContent>
-          {(isLoadingProp && pastInvoices.length === 0) ? (
+          {isLoadingProp && pastInvoices.length === 0 ? ( // If main page is loading and no invoices yet
              <div className="flex items-center justify-center h-40">
                 <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-primary"></div>
                 <p className="ml-3 text-muted-foreground">Loading past invoices...</p>
@@ -344,13 +368,13 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
                 {pastInvoices.length === 0 ? (
                   <TableRow><TableCell colSpan={9} className="text-center py-10 text-muted-foreground">
                     No past invoices found.
-                    {(isLoadingProp && pastInvoices.length === 0) ? " Still loading..." : ""}
+                    {(isLoadingProp && !isRefreshingInvoices) ? " Still loading or no data..." : ""}
                   </TableCell></TableRow>
                 ) : (
                   pastInvoices.map(invoice => (
                     <TableRow key={invoice.invoiceNumber}>
                       <TableCell className="font-medium">{invoice.invoiceNumber}</TableCell>
-                      <TableCell>{invoice.invoiceDate}</TableCell>
+                      <TableCell>{invoice.invoiceDate ? format(parseISO(invoice.invoiceDate), 'dd MMM yyyy') : 'N/A'}</TableCell>
                       <TableCell>{invoice.buyerName} ({invoice.buyerGstin || 'N/A'})</TableCell>
                       <TableCell className="text-right">{invoice.grandTotal.toFixed(2)}</TableCell>
                       <TableCell className="text-right">{invoice.amountPaid.toFixed(2)}</TableCell>
@@ -380,12 +404,12 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
             <DialogHeader>
               <DialogTitle>Edit Invoice: {editingInvoice.invoiceNumber}</DialogTitle>
               <CardDescription>
-                Enter the new payment amount received. The total paid will be updated cumulatively.
-                Select payment date and adjust status if necessary.
+                Enter the new payment amount received. This will be added to any previously paid amounts.
+                Select the date of this payment and adjust status if necessary.
               </CardDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
-              <div className="text-sm">
+              <div className="text-sm space-y-1">
                   <p><strong>Grand Total:</strong> ₹{editingInvoice.grandTotal.toFixed(2)}</p>
                   <p><strong>Current Total Paid:</strong> ₹{editingInvoice.amountPaid.toFixed(2)}</p>
                   <p className="font-semibold"><strong>Outstanding (Before this payment):</strong> ₹{(editingInvoice.grandTotal - editingInvoice.amountPaid).toFixed(2)}</p>
