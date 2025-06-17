@@ -26,11 +26,14 @@ export default function ShortcutsDialog({ isOpen, onOpenChange }: ShortcutsDialo
             <Keyboard className="mr-2 h-6 w-6" /> Keyboard Shortcuts
           </AlertDialogTitle>
           <AlertDialogDescription className="text-left whitespace-pre-line pt-2">
-            {`Ctrl + P / Cmd + P : Print Invoice
-Ctrl + N / Cmd + N : New Invoice (Clear Current)
-Ctrl + I / Cmd + I : Go to Inventory Section
+            {`Ctrl + I / Cmd + I : Go to Inventory Section
 Ctrl + B / Cmd + B : Go to Invoice Builder Section
-Ctrl + R / Cmd + R : Go to Reports Section`}
+Ctrl + S / Cmd + S : Go to Direct Sale Section
+Ctrl + R / Cmd + R : Go to Reports Section
+
+When in Invoice Builder:
+  Ctrl + P / Cmd + P : Print Current Invoice
+  Ctrl + N / Cmd + N : New Invoice (Clear Current Invoice Items)`}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

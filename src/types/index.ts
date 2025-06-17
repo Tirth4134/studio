@@ -74,6 +74,17 @@ export interface Invoice {
   grandTotal: number; // subTotal + taxAmount
   amountPaid: number;
   status: 'Unpaid' | 'Partially Paid' | 'Paid' | 'Cancelled';
-  latestPaymentDate?: string; // YYYY-MM-DD format for the last payment update
+  latestPaymentDate?: string | null; // YYYY-MM-DD format for the last payment update, can be null
 }
 
+// Simplified line item for direct sales before full invoice generation
+export interface DirectSaleLineItem {
+  id: string; // InventoryItem ID
+  name: string;
+  price: number; // Selling price per unit (from inventory)
+  quantity: number;
+  total: number; // price * quantity
+  hsnSac?: string;
+  gstRate?: number;
+  stock: number; // available stock, for display/validation
+}

@@ -2,10 +2,11 @@
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
-import type { InventoryItem, InvoiceLineItem, AppData, BuyerAddress, SalesRecord, Invoice, BuyerProfile } from '@/types';
+import type { InventoryItem, InvoiceLineItem, AppData, BuyerAddress, SalesRecord, Invoice, BuyerProfile, DirectSaleLineItem } from '@/types';
 import AppHeader from '@/components/layout/app-header';
 import InventorySection from '@/components/inventory/inventory-section';
 import InvoiceSection from '@/components/invoice/invoice-section';
+import DirectSaleSection from '@/components/direct-sale/direct-sale-section';
 import ReportsSection from '@/components/reports/reports-section'; 
 import ShortcutsDialog from '@/components/shortcuts-dialog';
 import { generateInvoiceNumber, generateUniqueId } from '@/lib/invoice-utils';
@@ -26,6 +27,7 @@ import {
   saveInvoiceToFirestore, 
   getInvoicesFromFirestore,
 } from '@/lib/firebase';
+import { format } from 'date-fns';
 
 const todayForSeed = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD
 
@@ -46,20 +48,32 @@ const initialBuyerAddressGlobal: BuyerAddress = {
   email: 'contact@neelkanth.com (Placeholder)',
 };
 
+const cashSaleBuyerAddress: BuyerAddress = {
+  name: 'Cash Sale Customer',
+  addressLine1: 'N/A',
+  addressLine2: '',
+  gstin: 'N/A',
+  stateNameAndCode: 'N/A',
+  contact: 'N/A',
+  email: '',
+};
+
 export default function HomePage() {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [invoiceItems, setInvoiceItems] = useState<InvoiceLineItem[]>([]);
+  const [directSaleItems, setDirectSaleItems] = useState<DirectSaleLineItem[]>([]);
   const [invoiceCounter, setInvoiceCounter] = useState<number>(1);
   const [buyerAddress, setBuyerAddress] = useState<BuyerAddress>(initialBuyerAddressGlobal);
   const [pastInvoices, setPastInvoices] = useState<Invoice[]>([]);
   const [activeSection, setActiveSection] = useState('inventory'); 
-  const [invoiceDate, setInvoiceDate] = useState('');
+  const [invoiceDate, setInvoiceDate] = useState(''); // For regular invoices
   const [currentInvoiceNumber, setCurrentInvoiceNumber] = useState('');
   const [isShortcutsDialogOpen, setIsShortcutsDialogOpen] = useState(false);
   const { toast } = useToast();
   const [isClient, setIsClient] = useState(false);
   const [isLoading, setIsLoading] = useState(true); 
   const [isPrinting, setIsPrinting] = useState(false);
+  const [isFinalizingDirectSale, setIsFinalizingDirectSale] = useState(false);
   const [searchedBuyerProfiles, setSearchedBuyerProfiles] = useState<BuyerProfile[]>([]);
 
 
@@ -96,7 +110,6 @@ export default function HomePage() {
           const appSettings = await getAppSettingsFromFirestore(initialBuyerAddressGlobal);
           console.log("[HomePage] fetchData: Fetched app settings from Firestore. Counter:", appSettings.invoiceCounter);
           
-          // Fetch past invoices as part of initial data load
           await fetchPastInvoices(); 
           console.log("[HomePage] fetchData: Past invoices fetched.");
 
@@ -157,7 +170,7 @@ export default function HomePage() {
       fetchData();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isClient, toast]); // Removed fetchPastInvoices from here as it's called within
+  }, [isClient, toast, fetchPastInvoices]); 
 
   useEffect(() => {
     setCurrentInvoiceNumber(generateInvoiceNumber(invoiceCounter));
@@ -209,7 +222,7 @@ export default function HomePage() {
     setIsPrinting(true);
 
     try {
-      const validGstin = buyerAddress.gstin && buyerAddress.gstin.trim() !== "" && !buyerAddress.gstin.includes("(Placeholder)");
+      const validGstin = buyerAddress.gstin && buyerAddress.gstin.trim() !== "" && !buyerAddress.gstin.includes("(Placeholder)") && buyerAddress.gstin !== "N/A";
       if (validGstin) {
         try {
           console.log("[HomePage] handlePrintInvoice: Attempting to save buyer profile for GSTIN:", buyerAddress.gstin);
@@ -221,8 +234,8 @@ export default function HomePage() {
           toast({ title: "Profile Save Error", description: `Could not save buyer profile. Error: ${(error as Error).message}`, variant: "destructive"});
         }
       } else {
-           toast({ title: "Info", description: `Buyer profile not saved: GSTIN is empty or placeholder.`, variant: "default", duration: 3000});
-           console.log("[HomePage] handlePrintInvoice: Buyer profile not saved, GSTIN invalid or placeholder.");
+           toast({ title: "Info", description: `Buyer profile not saved: GSTIN is empty, placeholder, or N/A.`, variant: "default", duration: 3000});
+           console.log("[HomePage] handlePrintInvoice: Buyer profile not saved, GSTIN invalid, placeholder, or N/A.");
       }
 
       const salesRecordsToSave: SalesRecord[] = [];
@@ -233,7 +246,7 @@ export default function HomePage() {
           salesRecordsToSave.push({
             id: generateUniqueId(), 
             invoiceNumber: currentInvoiceNumber,
-            saleDate: invoiceDate, // This is the invoice date
+            saleDate: invoiceDate, 
             itemId: invoiceItem.id,
             itemName: invoiceItem.name,
             category: inventoryItem.category, 
@@ -257,7 +270,7 @@ export default function HomePage() {
           toast({ title: "Sales Recorded", description: `${salesRecordsToSave.length} item sales recorded successfully for profit tracking.`, variant: "default", duration: 4000 });
           console.log("[HomePage] handlePrintInvoice: Sales records saved successfully.");
       } else {
-          salesRecordsSavedSuccessfully = true; // No records to save is also a "success" for this step
+          salesRecordsSavedSuccessfully = true; 
       }
       
       const subTotal = invoiceItems.reduce((sum, item) => sum + item.total, 0);
@@ -280,7 +293,7 @@ export default function HomePage() {
         grandTotal: grandTotal,
         amountPaid: 0, 
         status: 'Unpaid', 
-        latestPaymentDate: undefined, // A new invoice has no payment date yet
+        latestPaymentDate: null,
       };
 
       console.log("[HomePage] handlePrintInvoice: Attempting to save invoice. Data:", JSON.stringify(invoiceToSave, null, 2).substring(0, 500) + "...");
@@ -289,7 +302,6 @@ export default function HomePage() {
       toast({ title: "Invoice Saved", description: `Invoice ${currentInvoiceNumber} saved successfully to database.`, variant: "default" });
       console.log(`[HomePage] handlePrintInvoice: Invoice ${currentInvoiceNumber} saved successfully to Firestore.`);
       
-      // Only if all saves are successful, proceed with local state updates for new invoice
       if (invoiceSavedSuccessfully && salesRecordsSavedSuccessfully) {
         setPastInvoices(prev => [invoiceToSave, ...prev].sort((a, b) => new Date(b.invoiceDate).getTime() - new Date(a.invoiceDate).getTime() || b.invoiceNumber.localeCompare(a.invoiceNumber)));
         console.log("[HomePage] handlePrintInvoice: Past invoices state updated locally.");
@@ -304,7 +316,7 @@ export default function HomePage() {
           setBuyerAddress(settings.buyerAddress);
           console.log("[HomePage] handlePrintInvoice: Buyer address reset from settings for new invoice.");
         });
-         setInvoiceItems([]); // Clear current invoice items
+         setInvoiceItems([]); 
       } else {
         throw new Error("One or more database save operations failed during invoice finalization.");
       }
@@ -316,7 +328,110 @@ export default function HomePage() {
         setIsPrinting(false);
         console.log("[HomePage] handlePrintInvoice: Finalization process finished, isPrinting set to false.");
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPrinting, invoiceItems, inventory, currentInvoiceNumber, invoiceDate, invoiceCounter, toast, buyerAddress, initialBuyerAddressGlobal]);
+
+
+  const handleFinalizeDirectSale = useCallback(async (saleDate: string, items: DirectSaleLineItem[]) => {
+    if (isFinalizingDirectSale) {
+        toast({ title: "Processing", description: "Direct sale finalization is already in progress.", variant: "default" });
+        return;
+    }
+    if (items.length === 0) {
+        toast({ title: "Cannot Record", description: "No items in the direct sale.", variant: "destructive" });
+        return;
+    }
+    setIsFinalizingDirectSale(true);
+
+    const directSaleInvoiceNumber = generateInvoiceNumber(invoiceCounter);
+
+    try {
+        const salesRecordsToSave: SalesRecord[] = [];
+        const invoiceLineItems: InvoiceLineItem[] = [];
+
+        for (const saleItem of items) {
+            const inventoryItem = inventory.find(inv => inv.id === saleItem.id);
+            if (inventoryItem) {
+                const profit = (saleItem.price - inventoryItem.buyingPrice) * saleItem.quantity;
+                salesRecordsToSave.push({
+                    id: generateUniqueId(),
+                    invoiceNumber: directSaleInvoiceNumber,
+                    saleDate: saleDate,
+                    itemId: saleItem.id,
+                    itemName: saleItem.name,
+                    category: inventoryItem.category,
+                    quantitySold: saleItem.quantity,
+                    sellingPricePerUnit: saleItem.price,
+                    buyingPricePerUnit: inventoryItem.buyingPrice,
+                    totalProfit: profit,
+                });
+                invoiceLineItems.push({
+                    id: saleItem.id,
+                    name: saleItem.name,
+                    price: saleItem.price,
+                    quantity: saleItem.quantity,
+                    total: saleItem.total,
+                    hsnSac: inventoryItem.hsnSac,
+                    gstRate: inventoryItem.gstRate,
+                });
+            } else {
+                console.warn(`[HomePage] handleFinalizeDirectSale: Could not find inventory item with ID ${saleItem.id}.`);
+            }
+        }
+
+        if (salesRecordsToSave.length === 0 && invoiceLineItems.length === 0) {
+            throw new Error("No valid items processed for direct sale.");
+        }
+        
+        console.log("[HomePage] handleFinalizeDirectSale: Attempting to save sales records:", salesRecordsToSave.length, "records.");
+        await saveSalesRecordsToFirestore(salesRecordsToSave);
+        console.log("[HomePage] handleFinalizeDirectSale: Sales records saved successfully.");
+
+        const subTotal = invoiceLineItems.reduce((sum, item) => sum + item.total, 0);
+        let totalTaxAmount = 0;
+        invoiceLineItems.forEach(item => {
+            const itemGstRate = item.gstRate === undefined || item.gstRate === null || isNaN(item.gstRate) ? 0 : item.gstRate;
+            totalTaxAmount += item.total * (itemGstRate / 100);
+        });
+        const grandTotal = subTotal + totalTaxAmount;
+
+        const directSaleInvoiceToSave: Invoice = {
+            invoiceNumber: directSaleInvoiceNumber,
+            invoiceDate: saleDate,
+            buyerGstin: cashSaleBuyerAddress.gstin,
+            buyerName: cashSaleBuyerAddress.name,
+            buyerAddress: cashSaleBuyerAddress,
+            items: invoiceLineItems,
+            subTotal: subTotal,
+            taxAmount: totalTaxAmount,
+            grandTotal: grandTotal,
+            amountPaid: grandTotal, // Direct sale is fully paid
+            status: 'Paid',
+            latestPaymentDate: saleDate,
+        };
+
+        console.log("[HomePage] handleFinalizeDirectSale: Attempting to save direct sale invoice. Data:", JSON.stringify(directSaleInvoiceToSave, null, 2).substring(0, 500) + "...");
+        await saveInvoiceToFirestore(directSaleInvoiceToSave);
+        toast({ title: "Direct Sale Recorded", description: `Sale ${directSaleInvoiceNumber} recorded successfully.`, variant: "default" });
+        console.log(`[HomePage] handleFinalizeDirectSale: Direct sale invoice ${directSaleInvoiceNumber} saved successfully.`);
+
+        setPastInvoices(prev => [directSaleInvoiceToSave, ...prev].sort((a, b) => new Date(b.invoiceDate).getTime() - new Date(a.invoiceDate).getTime() || b.invoiceNumber.localeCompare(a.invoiceNumber)));
+        console.log("[HomePage] handleFinalizeDirectSale: Past invoices state updated locally.");
+        
+        updateInvoiceCounterStateAndDb(invoiceCounter + 1); // Increment invoice counter
+        console.log("[HomePage] handleFinalizeDirectSale: Invoice counter updated.");
+        
+        setDirectSaleItems([]); // Clear the direct sale items form
+
+    } catch (error) {
+        console.error("[HomePage] handleFinalizeDirectSale: CRITICAL ERROR during direct sale finalization:", error);
+        toast({ title: "Direct Sale Error", description: `Could not finalize direct sale. Error: ${(error as Error).message}.`, variant: "destructive", duration: 7000 });
+    } finally {
+        setIsFinalizingDirectSale(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFinalizingDirectSale, inventory, invoiceCounter, toast]);
+
 
   const lookupBuyerByGstin = async (gstin: string) => {
     if (!gstin || gstin.trim() === "") {
@@ -617,6 +732,7 @@ export default function HomePage() {
         }
         
         setInvoiceItems([]); 
+        setDirectSaleItems([]);
 
         toast({ title: 'Import Complete', description: `Processed ${parsedItems.length} records. Settings updated.`, });
         setTimeout(() => {
@@ -664,6 +780,7 @@ export default function HomePage() {
     } else {
         toast({ title: "New Invoice", description: "Invoice is already empty.", variant: "default" });
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [invoiceItems, toast, setInventory, initialBuyerAddressGlobal]);
 
   const handleInvoiceUpdate = (updatedInvoice: Invoice) => {
@@ -678,15 +795,17 @@ export default function HomePage() {
       const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
       const ctrlOrCmd = isMac ? event.metaKey : event.ctrlKey;
 
-      if (ctrlOrCmd && event.key.toLowerCase() === 'p') { event.preventDefault(); handlePrintInvoice(); }
-      else if (ctrlOrCmd && event.key.toLowerCase() === 'n') { event.preventDefault(); clearCurrentInvoice(); }
+      if (ctrlOrCmd && event.key.toLowerCase() === 'p' && activeSection === 'invoice') { event.preventDefault(); handlePrintInvoice(); }
+      else if (ctrlOrCmd && event.key.toLowerCase() === 'n' && activeSection === 'invoice') { event.preventDefault(); clearCurrentInvoice(); }
       else if (ctrlOrCmd && event.key.toLowerCase() === 'i') { event.preventDefault(); setActiveSection('inventory'); }
       else if (ctrlOrCmd && event.key.toLowerCase() === 'b') { event.preventDefault(); setActiveSection('invoice'); }
+      else if (ctrlOrCmd && event.key.toLowerCase() === 's') { event.preventDefault(); setActiveSection('directSale'); }
       else if (ctrlOrCmd && event.key.toLowerCase() === 'r') { event.preventDefault(); setActiveSection('reports'); } 
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handlePrintInvoice, clearCurrentInvoice]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [handlePrintInvoice, clearCurrentInvoice, activeSection]);
 
   if (!isClient || isLoading) {
     return (
@@ -733,12 +852,23 @@ export default function HomePage() {
             isPrinting={isPrinting}
           />
         )}
+        {activeSection === 'directSale' && (
+          <DirectSaleSection
+            inventory={inventory}
+            setInventory={updateInventoryStateAndDb}
+            directSaleItems={directSaleItems}
+            setDirectSaleItems={setDirectSaleItems}
+            onFinalizeDirectSale={handleFinalizeDirectSale}
+            isFinalizing={isFinalizingDirectSale}
+          />
+        )}
         {activeSection === 'reports' && (
           <ReportsSection 
             pastInvoices={pastInvoices}
             onInvoiceUpdate={handleInvoiceUpdate} 
-            isLoading={isLoading} // Pass the main loading state
+            isLoading={isLoading} 
             fetchPastInvoices={fetchPastInvoices}
+            inventoryItems={inventory} 
           />
         )}
       </main>
@@ -749,5 +879,3 @@ export default function HomePage() {
     </div>
   );
 }
-
-    

@@ -11,7 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Store, Package, FileText, Printer, Settings, Download, Upload, Keyboard, BarChart3, LogOut, Loader2 } from 'lucide-react';
+import { Store, Package, FileText, Printer, Settings, Download, Upload, Keyboard, BarChart3, LogOut, Loader2, ShoppingBag } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { logoutUser } from '@/lib/firebase';
 import { useRouter } from 'next/navigation';
@@ -70,12 +70,13 @@ export default function AppHeader({
           <Store className="h-8 w-8" />
           <h1 className="text-2xl font-headline">InvoiceFlow</h1>
         </div>
-        <nav className="flex items-center space-x-2">
+        <nav className="flex items-center space-x-1 md:space-x-2 flex-wrap justify-end">
           <Button
             variant={activeSection === 'inventory' ? "secondary" : "ghost"}
             onClick={() => setActiveSection('inventory')}
             className="text-primary-foreground hover:bg-primary/80"
             disabled={isPrinting}
+            size="sm"
           >
             <Package className="mr-2 h-5 w-5" /> Manage Inventory
           </Button>
@@ -84,24 +85,35 @@ export default function AppHeader({
             onClick={() => setActiveSection('invoice')}
             className="text-primary-foreground hover:bg-primary/80"
             disabled={isPrinting}
+            size="sm"
           >
             <FileText className="mr-2 h-5 w-5" /> Create Invoice
+          </Button>
+           <Button
+            variant={activeSection === 'directSale' ? "secondary" : "ghost"}
+            onClick={() => setActiveSection('directSale')}
+            className="text-primary-foreground hover:bg-primary/80"
+            disabled={isPrinting}
+            size="sm"
+          >
+            <ShoppingBag className="mr-2 h-5 w-5" /> Direct Sale
           </Button>
           <Button
             variant={activeSection === 'reports' ? "secondary" : "ghost"}
             onClick={() => setActiveSection('reports')}
             className="text-primary-foreground hover:bg-primary/80"
             disabled={isPrinting}
+            size="sm"
           >
             <BarChart3 className="mr-2 h-5 w-5" /> Reports
           </Button>
-          <Button variant="ghost" onClick={onPrint} className="text-primary-foreground hover:bg-primary/80" disabled={isPrinting}>
+          <Button variant="ghost" onClick={onPrint} className="text-primary-foreground hover:bg-primary/80" disabled={isPrinting || activeSection !== 'invoice'} size="sm">
             {isPrinting ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Printer className="mr-2 h-5 w-5" />}
             {isPrinting ? "Processing..." : "Print Invoice"}
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-primary/80" disabled={isPrinting}>
+              <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-primary/80 h-8 w-8 md:h-9 md:w-9" disabled={isPrinting}>
                 <Settings className="h-5 w-5" />
               </Button>
             </DropdownMenuTrigger>
@@ -139,5 +151,3 @@ export default function AppHeader({
     </header>
   );
 }
-
-    
