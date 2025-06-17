@@ -229,7 +229,6 @@ export const getAppSettingsFromFirestore = async (initialGlobalBuyerAddress: Buy
         buyerAddress: mergedBuyerAddress
       };
     } else {
-      // Settings doc doesn't exist, create it with defaults
       const defaultSettings: AppSettingsType = {
         invoiceCounter: 1,
         directSaleCounter: 1,
@@ -240,7 +239,6 @@ export const getAppSettingsFromFirestore = async (initialGlobalBuyerAddress: Buy
     }
   } catch (error) {
     console.error("Error fetching/setting app settings from Firestore:", error);
-    // Fallback to defaults if read fails, but log error
     return {
       invoiceCounter: 1,
       directSaleCounter: 1,
@@ -283,7 +281,7 @@ export const saveAllAppSettingsToFirestore = async (settings: AppSettingsType): 
       ...settings,
       invoiceCounter: settings.invoiceCounter || 1,
       directSaleCounter: settings.directSaleCounter || 1,
-      buyerAddress: { // Ensure buyerAddress and its optional fields are well-defined
+      buyerAddress: {
         ...(settings.buyerAddress || {}),
         name: settings.buyerAddress?.name || 'Default Buyer Name',
         addressLine1: settings.buyerAddress?.addressLine1 || 'Default Address 1',
@@ -309,27 +307,23 @@ export const getBuyerProfileByGSTIN = async (gstin: string): Promise<BuyerProfil
     const docSnap = await getDoc(profileDocRef);
     if (docSnap.exists()) {
       const data = docSnap.data() as BuyerProfile;
-      // Ensure optional fields have defaults
       return { ...data, email: data.email || '', addressLine2: data.addressLine2 || '' };
     }
     return null;
   } catch (error) {
     console.error(`Error fetching buyer profile for GSTIN ${gstin} from Firestore:`, error);
-    throw error; // Or return null based on desired error handling
+    throw error;
   }
 };
 
 export const getBuyerProfilesByName = async (nameQuery: string): Promise<BuyerProfile[]> => {
   if (!nameQuery || nameQuery.trim() === "") return [];
   try {
-    const standardizedQuery = nameQuery.trim(); // No toLowerCase here, Firestore is case-sensitive by default
-    // For case-insensitive search, you'd typically store a lowercased version of the name
-    // or use more complex querying if Firestore supports it (e.g., with extensions/functions or client-side filtering)
-    // The current query is a prefix match.
+    const standardizedQuery = nameQuery.trim();
     const q = query(
       buyerProfilesCollectionRef,
       where("name", ">=", standardizedQuery),
-      where("name", "<=", standardizedQuery + '\uf8ff'), // '\uf8ff' is a high-value Unicode character for prefix matching
+      where("name", "<=", standardizedQuery + '\uf8ff'),
       limit(10)
     );
     const querySnapshot = await getDocs(q);
@@ -341,34 +335,33 @@ export const getBuyerProfilesByName = async (nameQuery: string): Promise<BuyerPr
     return profiles;
   } catch (error) {
     console.error(`Error fetching buyer profiles by name "${nameQuery}":`, error);
-    return []; // Return empty array on error
+    return [];
   }
 };
 
 
 export const saveBuyerProfile = async (gstin: string, address: BuyerAddress): Promise<void> => {
-  // Use GSTIN as document ID if valid, otherwise don't save (or decide on alternative ID strategy)
   const idToUse = gstin && gstin.trim() !== "" && !gstin.includes("(Placeholder)")
                   ? gstin.trim().toUpperCase()
                   : null;
 
   if (!idToUse) {
     console.log("Buyer profile not saved: No valid GSTIN provided to use as document ID.");
-    return; // Or throw an error / handle differently
+    return;
   }
 
   try {
     const profileDocRef = doc(buyerProfilesCollectionRef, idToUse);
-    const profileData: BuyerProfile = { // Ensure all fields from BuyerAddress are present
+    const profileData: BuyerProfile = {
       name: address.name || '',
       addressLine1: address.addressLine1 || '',
       addressLine2: address.addressLine2 || '',
-      gstin: idToUse, // Use the validated, uppercase GSTIN
+      gstin: idToUse,
       stateNameAndCode: address.stateNameAndCode || '',
       contact: address.contact || '',
       email: address.email || '',
     };
-    await setDoc(profileDocRef, profileData, { merge: true }); // Merge to update existing or create new
+    await setDoc(profileDocRef, profileData, { merge: true });
   } catch (error) {
     console.error(`Error saving buyer profile for GSTIN ${idToUse} to Firestore:`, error);
     throw error;
@@ -384,14 +377,13 @@ export const saveSalesRecordsToFirestore = async (salesRecords: SalesRecord[]): 
   try {
     const batch = writeBatch(db);
     salesRecords.forEach(record => {
-      const recordDocRef = doc(salesRecordsCollectionRef, record.id); // Assuming record.id is unique
+      const recordDocRef = doc(salesRecordsCollectionRef, record.id);
       batch.set(recordDocRef, record);
     });
     await batch.commit();
   } catch (error: any) {
     console.error("CRITICAL ERROR during batch.commit() in saveSalesRecordsToFirestore:", error);
-    // Consider more specific error handling or re-throwing a custom error
-    throw error; // Re-throw the original error or a custom one
+    throw error;
   }
 };
 
@@ -401,10 +393,9 @@ export const getSalesRecordsFromFirestore = async (): Promise<SalesRecord[]> => 
     const records: SalesRecord[] = [];
     querySnapshot.forEach((docSnap) => {
       const data = docSnap.data();
-      // Add robust mapping with fallbacks for each field
       records.push({
         id: docSnap.id,
-        invoiceNumber: data.invoiceNumber || "N/A", // This can be INV- or DS-
+        invoiceNumber: data.invoiceNumber || "N/A",
         saleDate: typeof data.saleDate === 'string' ? data.saleDate : new Date().toLocaleDateString('en-CA'),
         itemId: data.itemId || "N/A",
         itemName: data.itemName || "N/A",
@@ -418,7 +409,7 @@ export const getSalesRecordsFromFirestore = async (): Promise<SalesRecord[]> => 
     return records;
   } catch (error) {
     console.error("Error fetching sales records from Firestore:", error);
-    return []; // Return empty on error to prevent app crash
+    return [];
   }
 };
 
@@ -489,26 +480,24 @@ export const getInvoicesFromFirestore = async (): Promise<Invoice[]> => {
     const invoices: Invoice[] = [];
     querySnapshot.forEach((docSnap) => {
       const data = docSnap.data();
-      const docId = docSnap.id;
-      console.log(`[Firebase] Raw invoice data for doc ID ${docId}:`, data);
+      const docId = docSnap.id; // Use Firestore document ID for logging and fallback
 
-      const finalInvoiceNumber = (data.invoiceNumber && typeof data.invoiceNumber === 'string' && data.invoiceNumber.trim() !== "")
-                                 ? data.invoiceNumber.trim()
-                                 : `ERR-INV-${docId}`;
-      if (finalInvoiceNumber !== data.invoiceNumber) {
-          console.warn(`[Firebase] Document ID ${docId} has invalid/missing invoiceNumber ('${data.invoiceNumber}'). Using fallback: '${finalInvoiceNumber}'.`);
+      let finalInvoiceNumber = data.invoiceNumber;
+      if (!finalInvoiceNumber || typeof finalInvoiceNumber !== 'string' || finalInvoiceNumber.trim() === "") {
+        finalInvoiceNumber = `ERR-INV-${docId}`;
+        console.warn(`[Firebase] Document ID ${docId} in 'invoices' has missing or invalid invoiceNumber ('${data.invoiceNumber}'). Using fallback: '${finalInvoiceNumber}'. Raw data:`, data);
       }
 
-      const finalInvoiceDate = (data.invoiceDate && typeof data.invoiceDate === 'string' && data.invoiceDate.match(/^\d{4}-\d{2}-\d{2}$/))
-                               ? data.invoiceDate
-                               : new Date().toLocaleDateString('en-CA');
-      if (finalInvoiceDate !== data.invoiceDate) {
-          console.warn(`[Firebase] Document ID ${docId} (Inv# ${finalInvoiceNumber}) has invalid/missing invoiceDate ('${data.invoiceDate}'). Using fallback: '${finalInvoiceDate}'.`);
+      let finalInvoiceDate = data.invoiceDate;
+      if (!finalInvoiceDate || typeof finalInvoiceDate !== 'string' || !finalInvoiceDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        const fallbackDate = new Date().toLocaleDateString('en-CA');
+        console.warn(`[Firebase] Document ID ${docId} (Inv# ${finalInvoiceNumber}) in 'invoices' has missing or invalid invoiceDate ('${data.invoiceDate}'). Using fallback: '${fallbackDate}'. Raw data:`, data);
+        finalInvoiceDate = fallbackDate;
       }
       
       const items: InvoiceLineItem[] = (data.items || []).map((item: any, index: number) => ({
         id: item.id || `item-ERR-${docId}-${index}`,
-        name: item.name || "N/A",
+        name: item.name || "Unknown Item",
         price: typeof item.price === 'number' ? item.price : 0,
         quantity: typeof item.quantity === 'number' ? item.quantity : 0,
         total: typeof item.total === 'number' ? item.total : 0,
@@ -556,7 +545,6 @@ export const updateInvoiceInFirestore = async (invoiceNumber: string, updates: P
     const invoiceDocRef = doc(invoicesCollectionRef, invoiceNumber);
     const updatesToApply: { [key: string]: any } = {};
 
-    // Deep copy items if present to avoid modifying the original updates object
     if (updates.items) {
       updatesToApply.items = updates.items.map(item => ({
         ...item,
@@ -577,7 +565,6 @@ export const updateInvoiceInFirestore = async (invoiceNumber: string, updates: P
       updatesToApply.latestPaymentDate = updates.latestPaymentDate === undefined ? null : (updates.latestPaymentDate === '' ? null : updates.latestPaymentDate) ;
     }
     
-    // Handle status update specifically to ensure 'Paid' status is set if grandTotal equals amountPaid
     if (updates.hasOwnProperty('amountPaid') || updates.hasOwnProperty('status') || updates.hasOwnProperty('grandTotal')) {
         const currentDoc = await getDoc(invoiceDocRef);
         const currentData = currentDoc.exists() ? currentDoc.data() as Invoice : {} as Invoice;
@@ -587,7 +574,7 @@ export const updateInvoiceInFirestore = async (invoiceNumber: string, updates: P
         let newStatus = updates.status ?? currentData.status ?? 'Unpaid';
 
         if (newStatus !== 'Cancelled') {
-            const epsilon = 0.01; // For floating point comparison
+            const epsilon = 0.01;
             if (Math.abs(newAmountPaid - grandTotal) < epsilon && grandTotal > 0) {
                 newStatus = 'Paid';
             } else if (newAmountPaid > 0 && newAmountPaid < grandTotal - epsilon) {
@@ -601,12 +588,9 @@ export const updateInvoiceInFirestore = async (invoiceNumber: string, updates: P
         updatesToApply.status = newStatus;
     }
 
-
-    // Copy other fields from updates to updatesToApply
     for (const key in updates) {
       if (updates.hasOwnProperty(key) && !updatesToApply.hasOwnProperty(key)) {
         (updatesToApply as any)[key] = (updates as any)[key];
-        // Handle undefined values correctly, except for latestPaymentDate which can be nullified
         if ((updatesToApply as any)[key] === undefined && key !== 'latestPaymentDate') {
             (updatesToApply as any)[key] = deleteField();
         } else if ((updatesToApply as any)[key] === undefined && key === 'latestPaymentDate'){
@@ -615,19 +599,17 @@ export const updateInvoiceInFirestore = async (invoiceNumber: string, updates: P
       }
     }
     
-    // Ensure required fields like invoiceDate and invoiceNumber are not accidentally deleted if not present in updates
     if (!updatesToApply.invoiceDate && !updates.invoiceDate) {
         const currentDoc = await getDoc(invoiceDocRef);
         if (currentDoc.exists() && currentDoc.data()?.invoiceDate) {
             updatesToApply.invoiceDate = currentDoc.data()!.invoiceDate;
         } else {
-            updatesToApply.invoiceDate = new Date().toLocaleDateString('en-CA'); // Fallback
+            updatesToApply.invoiceDate = new Date().toLocaleDateString('en-CA');
         }
     }
      if (!updatesToApply.invoiceNumber && !updates.invoiceNumber) {
         updatesToApply.invoiceNumber = invoiceNumber;
     }
-
 
     await setDoc(invoiceDocRef, updatesToApply, { merge: true });
     console.log(`[Firebase] Invoice ${invoiceNumber} updated successfully with:`, updatesToApply);
@@ -663,7 +645,7 @@ export const saveDirectSaleLogEntryToFirestore = async (entry: DirectSaleLogEntr
 
     const entryToSave: DirectSaleLogEntry = {
         ...entry,
-        id: finalDirectSaleNumber, // Ensure ID matches the doc ID
+        id: finalDirectSaleNumber,
         directSaleNumber: finalDirectSaleNumber,
         saleDate: (entry.saleDate && typeof entry.saleDate === 'string' && entry.saleDate.match(/^\d{4}-\d{2}-\d{2}$/)) ? entry.saleDate : new Date().toLocaleDateString('en-CA'),
         items: itemsToSave,
@@ -687,23 +669,23 @@ export const getDirectSaleLogEntriesFromFirestore = async (): Promise<DirectSale
     const entries: DirectSaleLogEntry[] = [];
     querySnapshot.forEach((docSnap) => {
       const data = docSnap.data();
-      const docId = docSnap.id;
+      const docId = docSnap.id; // Use Firestore document ID for logging and fallback
 
-      const finalDirectSaleNumber = (data.directSaleNumber && typeof data.directSaleNumber === 'string' && data.directSaleNumber.trim() !== "")
-                                 ? data.directSaleNumber.trim()
-                                 : `ERR-DS-${docId}`;
-      if (finalDirectSaleNumber !== data.directSaleNumber) {
-          console.warn(`[Firebase] Direct Sale Log ${docId} has invalid/missing directSaleNumber ('${data.directSaleNumber}'). Using fallback: '${finalDirectSaleNumber}'.`);
+      let finalDirectSaleNumber = data.directSaleNumber;
+      if (!finalDirectSaleNumber || typeof finalDirectSaleNumber !== 'string' || finalDirectSaleNumber.trim() === "") {
+          finalDirectSaleNumber = `ERR-DS-${docId}`;
+          console.warn(`[Firebase] Document ID ${docId} in 'directSalesLog' has missing or invalid directSaleNumber ('${data.directSaleNumber}'). Using fallback: '${finalDirectSaleNumber}'. Raw data:`, data);
       }
-      const finalSaleDate = (data.saleDate && typeof data.saleDate === 'string' && data.saleDate.match(/^\d{4}-\d{2}-\d{2}$/))
-                            ? data.saleDate
-                            : new Date().toLocaleDateString('en-CA');
-       if (finalSaleDate !== data.saleDate) {
-          console.warn(`[Firebase] Direct Sale Log ${docId} (DS# ${finalDirectSaleNumber}) has invalid/missing saleDate ('${data.saleDate}'). Using fallback: '${finalSaleDate}'.`);
+
+      let finalSaleDate = data.saleDate;
+      if (!finalSaleDate || typeof finalSaleDate !== 'string' || !finalSaleDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+          const fallbackDate = new Date().toLocaleDateString('en-CA');
+          console.warn(`[Firebase] Document ID ${docId} (DS# ${finalDirectSaleNumber}) in 'directSalesLog' has missing or invalid saleDate ('${data.saleDate}'). Using fallback: '${fallbackDate}'. Raw data:`, data);
+          finalSaleDate = fallbackDate;
       }
 
       entries.push({
-        id: docId, // Use Firestore document ID as the entry ID
+        id: docId,
         directSaleNumber: finalDirectSaleNumber,
         saleDate: finalSaleDate,
         items: (data.items || []).map((item: any, index: number) => ({
@@ -731,7 +713,3 @@ export const getDirectSaleLogEntriesFromFirestore = async (): Promise<DirectSale
 
 export { db, auth, User };
 export type { InventoryItem, BuyerAddress, BuyerProfile, AppSettingsType, SalesRecord, Invoice, InvoiceLineItem, DirectSaleLogEntry, DirectSaleItemDetail };
-
-    
-      
-      

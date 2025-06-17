@@ -91,11 +91,14 @@ export default function HomePage() {
       setPastDirectSalesLog(fetchedDirectSales);
     } catch (error: any) {
       console.error("[HomePage] Error fetching past invoices or direct sales:", error);
-      toast({ title: "Error Fetching Sales History", description: `Could not fetch past sales. ${error.message}`, variant: "destructive" });
-      setPastInvoices([]); // Reset to empty on error to avoid displaying stale data
-      setPastDirectSalesLog([]);
+      // If it's a refresh error (isLoading is false) and data was previously loaded, don't wipe it.
+      if (isLoading) {
+          setPastInvoices([]);
+          setPastDirectSalesLog([]);
+      }
+      toast({ title: "Error Fetching Sales History", description: `Could not fetch past sales. ${isLoading ? '' : 'Existing data (if any) is shown. '}Error: ${error.message}`, variant: "destructive" });
     }
-  }, [toast]);
+  }, [toast, isLoading]); // isLoading dependency added to control error handling behavior
 
   useEffect(() => {
     if (isClient) {
@@ -109,12 +112,15 @@ export default function HomePage() {
           const appSettings = await getAppSettingsFromFirestore(initialBuyerAddressGlobal);
           console.log("[HomePage] fetchData: Fetched app settings. InvoiceCounter:", appSettings.invoiceCounter, "DirectSaleCounter:", appSettings.directSaleCounter);
 
-          // Then fetch past sales data
+          // Then fetch past sales data using the callback
           await fetchPastSalesData();
           console.log("[HomePage] fetchData: Past invoices and direct sales fetched using combined function.");
+          
+          const currentInvoices = pastInvoices; // Use the state updated by fetchPastSalesData or previous state
+          const currentDirectSalesLog = pastDirectSalesLog;
 
           // Seeding logic (only if everything is truly empty)
-          if (firestoreInventory.length === 0 && appSettings.invoiceCounter === 1 && appSettings.directSaleCounter === 1 && appSettings.buyerAddress.name === initialBuyerAddressGlobal.name && pastInvoices.length === 0 && pastDirectSalesLog.length === 0) {
+          if (firestoreInventory.length === 0 && appSettings.invoiceCounter === 1 && appSettings.directSaleCounter === 1 && appSettings.buyerAddress.name === initialBuyerAddressGlobal.name && currentInvoices.length === 0 && currentDirectSalesLog.length === 0) {
             toast({
                 title: "Initializing Database",
                 description: "No existing data found. Seeding with default data...",
@@ -135,7 +141,9 @@ export default function HomePage() {
             setInvoiceCounter(initialSettingsToSave.invoiceCounter);
             setDirectSaleCounter(initialSettingsToSave.directSaleCounter);
             setBuyerAddress(initialSettingsToSave.buyerAddress);
-            // No need to set pastInvoices/pastDirectSalesLog here as they are fetched above and would be empty
+            // pastInvoices and pastDirectSalesLog should be empty here if seeding
+            setPastInvoices([]); 
+            setPastDirectSalesLog([]);
             toast({
                 title: "Application Initialized",
                 description: "Default data loaded into the database.",
@@ -147,7 +155,8 @@ export default function HomePage() {
             setInvoiceCounter(appSettings.invoiceCounter);
             setDirectSaleCounter(appSettings.directSaleCounter);
             setBuyerAddress(appSettings.buyerAddress);
-            // Past invoices and direct sales are already set by fetchPastSalesData
+            // Past invoices and direct sales are already set by fetchPastSalesData if it ran
+            // If fetchPastSalesData hasn't run yet (e.g. first render), they'll be updated by it.
             toast({
                 title: "Data Loaded",
                 description: "Successfully fetched inventory, settings, and sales history from Firestore.",
@@ -402,8 +411,6 @@ export default function HomePage() {
         }
 
         if (salesRecordsToSave.length === 0) {
-            // This implies all items in the directSaleItems list couldn't be found in inventory
-            // which should ideally be prevented by the UI, but a safeguard is good.
             throw new Error("No valid items processed for direct sale. Inventory might be out of sync.");
         }
 
@@ -449,7 +456,6 @@ export default function HomePage() {
       toast({ title: "Info", description: "GSTIN cannot be empty for lookup.", variant: "default" });
       return;
     }
-    // Consider adding a loading state specific to this lookup if it's noticeable
     try {
       const profile = await getBuyerProfileByGSTIN(gstin);
       if (profile) {
@@ -457,20 +463,19 @@ export default function HomePage() {
             name: profile.name || '',
             addressLine1: profile.addressLine1 || '',
             addressLine2: profile.addressLine2 || '',
-            gstin: profile.gstin, // GSTIN from profile should be used
+            gstin: profile.gstin,
             stateNameAndCode: profile.stateNameAndCode || '',
             contact: profile.contact || '',
             email: profile.email || '',
         };
         setBuyerAddress(completeProfile);
         toast({ title: "Buyer Found", description: `Details for ${profile.name || 'Buyer'} loaded.`, variant: "default" });
-        setSearchedBuyerProfiles([]); // Clear search results
+        setSearchedBuyerProfiles([]);
       } else {
         toast({ title: "Buyer Not Found", description: "No existing profile for this GSTIN. Please enter details manually.", variant: "default" });
-        // Optionally pre-fill GSTIN in form if not found, clear other fields
         setBuyerAddress(prev => ({
-          ...initialBuyerAddressGlobal, // Or a blank address structure
-          gstin: gstin.trim().toUpperCase(), // Keep the searched GSTIN
+          ...initialBuyerAddressGlobal, 
+          gstin: gstin.trim().toUpperCase(),
           name: '', addressLine1: '', addressLine2: '', stateNameAndCode: '', contact: '', email: ''
         }));
         setSearchedBuyerProfiles([]);
@@ -487,26 +492,24 @@ export default function HomePage() {
       setSearchedBuyerProfiles([]);
       return;
     }
-    // Consider adding a loading state
     try {
       const profiles = await getBuyerProfilesByName(nameQuery);
       if (profiles.length > 0) {
         setSearchedBuyerProfiles(profiles);
         if (profiles.length === 1) {
-          // If only one match, auto-fill it
           const singleProfile = profiles[0];
-           const completeProfile: BuyerAddress = { // Ensure all fields are present
+           const completeProfile: BuyerAddress = {
               name: singleProfile.name || '',
               addressLine1: singleProfile.addressLine1 || '',
               addressLine2: singleProfile.addressLine2 || '',
-              gstin: singleProfile.gstin, // GSTIN from profile
+              gstin: singleProfile.gstin,
               stateNameAndCode: singleProfile.stateNameAndCode || '',
               contact: singleProfile.contact || '',
               email: singleProfile.email || '',
           };
           setBuyerAddress(completeProfile);
           toast({ title: "Buyer Found", description: `Details for ${singleProfile.name} loaded.`, variant: "default" });
-          setSearchedBuyerProfiles([]); // Clear search results
+          setSearchedBuyerProfiles([]);
         } else {
           toast({ title: "Multiple Buyers Found", description: `Found ${profiles.length} profiles. Please select one.`, variant: "default" });
         }
@@ -523,16 +526,15 @@ export default function HomePage() {
 
 
   const handleExportData = async () => {
-    // Consider adding loading state for export
     try {
-      const currentInventory = await getInventoryFromFirestore(); // Fetch latest
-      const currentSettings = await getAppSettingsFromFirestore(initialBuyerAddressGlobal); // Fetch latest
+      const currentInventory = await getInventoryFromFirestore();
+      const currentSettings = await getAppSettingsFromFirestore(initialBuyerAddressGlobal);
 
       const appData: AppData = {
         items: currentInventory,
         invoiceCounter: currentSettings.invoiceCounter,
-        directSaleCounter: currentSettings.directSaleCounter, // Include directSaleCounter
-        buyerAddress: currentSettings.buyerAddress, // Include global buyer address settings
+        directSaleCounter: currentSettings.directSaleCounter,
+        buyerAddress: currentSettings.buyerAddress,
       };
       const dataStr = JSON.stringify(appData, null, 2);
       const dataBlob = new Blob([dataStr], { type: 'application/json' });
@@ -551,7 +553,6 @@ export default function HomePage() {
     }
   };
 
-  // mapRawItemToInventoryItemEnsuringUniqueId, handleImportData remain complex, ensure thorough testing.
   const mapRawItemToInventoryItemEnsuringUniqueId = (
     rawItem: any,
     allExistingItemIds: Set<string>,
@@ -579,46 +580,41 @@ export default function HomePage() {
     const name = rawItem.name || rawItem.item_name || rawItem.itemName || rawItem['Item Name'];
     const category = rawItem.category || rawItem.Category;
     const sellingPrice = normalizePrice(rawItem.price || rawItem.Price || rawItem.sellingPrice);
-    const buyingPrice = normalizePrice(rawItem.buyingPrice || rawItem.costPrice || rawItem.cost_price || 0); // Default buyingPrice to 0 if not present
+    const buyingPrice = normalizePrice(rawItem.buyingPrice || rawItem.costPrice || rawItem.cost_price || 0);
     const stock = normalizeStock(rawItem.stock || rawItem.Stock);
     const description = rawItem.description || rawItem.Description || '';
     const purchaseDate = rawItem.purchaseDate || rawItem.purchase_date;
     const hsnSac = rawItem.hsnSac || rawItem.hsn_sac || rawItem.HSN_SAC || '';
     const gstRate = normalizePrice(rawItem.gstRate || rawItem.gst_rate || rawItem.GSTRate);
 
-
-    // Basic validation
     if (!name || typeof name !== 'string' || name.trim() === '') return null;
     if (isNaN(sellingPrice) || sellingPrice < 0) return null;
-    if (isNaN(buyingPrice) || buyingPrice < 0) return null; // Ensure buying price isn't negative
+    if (isNaN(buyingPrice) || buyingPrice < 0) return null;
     if (isNaN(stock) || stock < 0) return null;
     if (!category || typeof category !== 'string' || category.trim() === '') return null;
-    if (gstRate !== undefined && (isNaN(gstRate) || gstRate < 0 || gstRate > 100)) return null; // GST rate validation
+    if (gstRate !== undefined && (isNaN(gstRate) || gstRate < 0 || gstRate > 100)) return null;
 
-
-    // ID generation and uniqueness check
     let finalId = rawItem.id && typeof rawItem.id === 'string' ? rawItem.id : generateUniqueId();
     while (allExistingItemIds.has(finalId) || tempImportedItemIdsForThisBatch.has(finalId)) {
       finalId = generateUniqueId();
     }
-    tempImportedItemIdsForThisBatch.add(finalId); // Track IDs generated in this batch
+    tempImportedItemIdsForThisBatch.add(finalId);
 
-    // Validate or default purchaseDate
     const validatedPurchaseDate = typeof purchaseDate === 'string' && purchaseDate.match(/^\d{4}-\d{2}-\d{2}$/)
                                  ? purchaseDate
-                                 : new Date().toLocaleDateString('en-CA'); // Default to today if invalid/missing
+                                 : new Date().toLocaleDateString('en-CA');
 
     return {
       id: finalId,
       name: name.trim(),
       category: category.trim(),
-      buyingPrice: buyingPrice, // Already defaulted if necessary
+      buyingPrice: buyingPrice,
       price: sellingPrice,
       stock,
       description: typeof description === 'string' ? description.trim() : '',
       purchaseDate: validatedPurchaseDate,
-      hsnSac: typeof hsnSac === 'string' ? hsnSac.trim() : undefined, // Use undefined if empty for consistency
-      gstRate: gstRate === undefined || isNaN(gstRate) ? undefined : gstRate, // Use undefined if invalid/missing
+      hsnSac: typeof hsnSac === 'string' ? hsnSac.trim() : undefined,
+      gstRate: gstRate === undefined || isNaN(gstRate) ? undefined : gstRate,
     };
   };
 
@@ -637,7 +633,6 @@ export default function HomePage() {
 
     const reader = new FileReader();
     reader.onload = async (e) => {
-      // Consider setting loading state for import
       try {
         const result = e.target?.result as string;
         if (!result) {
@@ -648,28 +643,26 @@ export default function HomePage() {
 
         let parsedItems: any[] = [];
         let importedInvoiceCounter: number | undefined = undefined;
-        let importedDirectSaleCounter: number | undefined = undefined; // Added for direct sale counter
+        let importedDirectSaleCounter: number | undefined = undefined;
         let importedBuyerAddress: BuyerAddress | undefined = undefined;
 
-        // Flexible parsing for different JSON structures
         if (Array.isArray(parsedData)) {
-          parsedItems = parsedData; // Assume it's an array of items
+          parsedItems = parsedData;
         } else if (typeof parsedData === 'object' && parsedData !== null) {
           if (Array.isArray(parsedData.items)) parsedItems = parsedData.items;
           if (typeof parsedData.invoiceCounter === 'number') importedInvoiceCounter = parsedData.invoiceCounter;
-          if (typeof parsedData.directSaleCounter === 'number') importedDirectSaleCounter = parsedData.directSaleCounter; // Handle direct sale counter
+          if (typeof parsedData.directSaleCounter === 'number') importedDirectSaleCounter = parsedData.directSaleCounter;
           if (typeof parsedData.buyerAddress === 'object' && parsedData.buyerAddress !== null) {
-             // Validate buyerAddress structure before assigning
              const ba = parsedData.buyerAddress;
              if (ba.name && ba.addressLine1 && ba.gstin && ba.stateNameAndCode && ba.contact) {
                 importedBuyerAddress = {
                     name: ba.name,
                     addressLine1: ba.addressLine1,
-                    addressLine2: ba.addressLine2 || '', // Default to empty string if missing
+                    addressLine2: ba.addressLine2 || '',
                     gstin: ba.gstin,
                     stateNameAndCode: ba.stateNameAndCode,
                     contact: ba.contact,
-                    email: ba.email || '', // Default to empty string if missing
+                    email: ba.email || '',
                 };
              } else {
                 toast({ title: "Warning", description: "Buyer address in file is incomplete, skipping.", variant: "default"});
@@ -681,22 +674,19 @@ export default function HomePage() {
 
         if (parsedItems.length === 0 && importedInvoiceCounter === undefined && importedDirectSaleCounter === undefined && importedBuyerAddress === undefined) {
           toast({ title: "No Valid Data Found", description: "File does not contain items or settings.", variant: "default" });
-          // Reset loading state if any
           return;
         }
 
-        // Fetch current inventory from Firestore to merge, not from local state
         const currentFirestoreInventory = await getInventoryFromFirestore();
         const newInventoryState = [...currentFirestoreInventory];
         const currentInventoryItemIds = new Set(newInventoryState.map(item => item.id));
-        const tempImportedItemIdsForThisBatch = new Set<string>(); // To track IDs generated within this import batch
+        const tempImportedItemIdsForThisBatch = new Set<string>();
 
         let addedCount = 0;
         let updatedCount = 0;
         let skippedCount = 0;
 
         parsedItems.forEach(rawItemFromFile => {
-          // Ensure allExistingItemIds includes those already processed in this batch to prevent duplicates from the file itself
           const combinedExistingIds = new Set([...currentInventoryItemIds, ...tempImportedItemIdsForThisBatch]);
           const importedItem = mapRawItemToInventoryItemEnsuringUniqueId(rawItemFromFile, combinedExistingIds, tempImportedItemIdsForThisBatch);
 
@@ -705,45 +695,42 @@ export default function HomePage() {
             return;
           }
 
-          // Check if item already exists by name and category (case-insensitive)
           const existingItemIndex = newInventoryState.findIndex(
             invItem => invItem.name.toLowerCase() === importedItem.name.toLowerCase() &&
                        invItem.category.toLowerCase() === importedItem.category.toLowerCase()
           );
 
-          if (existingItemIndex !== -1) { // Item exists, update it
+          if (existingItemIndex !== -1) {
             const currentItem = newInventoryState[existingItemIndex];
             newInventoryState[existingItemIndex] = {
-              ...currentItem, // Keep existing ID and potentially other fields
-              id: currentItem.id, // Explicitly keep existing ID
-              stock: currentItem.stock + importedItem.stock, // Add to existing stock
-              buyingPrice: importedItem.buyingPrice, // Update buying price
-              price: importedItem.price, // Update selling price
-              description: importedItem.description, // Update description
-              purchaseDate: importedItem.purchaseDate || currentItem.purchaseDate, // Update purchase date if provided
-              hsnSac: importedItem.hsnSac || currentItem.hsnSac, // Update HSN/SAC
-              gstRate: importedItem.gstRate !== undefined ? importedItem.gstRate : currentItem.gstRate, // Update GST rate
+              ...currentItem,
+              id: currentItem.id,
+              stock: currentItem.stock + importedItem.stock,
+              buyingPrice: importedItem.buyingPrice,
+              price: importedItem.price,
+              description: importedItem.description,
+              purchaseDate: importedItem.purchaseDate || currentItem.purchaseDate,
+              hsnSac: importedItem.hsnSac || currentItem.hsnSac,
+              gstRate: importedItem.gstRate !== undefined ? importedItem.gstRate : currentItem.gstRate,
             };
             updatedCount++;
-          } else { // New item
+          } else {
             newInventoryState.push(importedItem);
-            currentInventoryItemIds.add(importedItem.id); // Add new ID to set for future checks in this session
-            tempImportedItemIdsForThisBatch.add(importedItem.id); // Also track in this batch
+            currentInventoryItemIds.add(importedItem.id);
+            tempImportedItemIdsForThisBatch.add(importedItem.id);
             addedCount++;
           }
         });
 
-        // Save the potentially merged inventory to Firestore
         await saveMultipleInventoryItemsToFirestore(newInventoryState);
-        setInventory(newInventoryState); // Update local state
+        setInventory(newInventoryState);
 
-        // Update settings if imported
         const settingsToUpdate: Partial<AppSettings> = {};
         if (importedInvoiceCounter !== undefined) {
           settingsToUpdate.invoiceCounter = importedInvoiceCounter;
           setInvoiceCounter(importedInvoiceCounter);
         }
-        if (importedDirectSaleCounter !== undefined) { // Handle direct sale counter
+        if (importedDirectSaleCounter !== undefined) {
           settingsToUpdate.directSaleCounter = importedDirectSaleCounter;
           setDirectSaleCounter(importedDirectSaleCounter);
         }
@@ -752,7 +739,6 @@ export default function HomePage() {
           setBuyerAddress(importedBuyerAddress);
         }
         if (Object.keys(settingsToUpdate).length > 0) {
-          // Fetch existing settings to merge with, rather than overwriting entirely if only some are imported
           const currentSettings = await getAppSettingsFromFirestore(initialBuyerAddressGlobal);
           const finalSettingsToSave: AppSettings = {
             invoiceCounter: settingsToUpdate.invoiceCounter ?? currentSettings.invoiceCounter,
@@ -762,8 +748,6 @@ export default function HomePage() {
           await saveAllAppSettingsToFirestore(finalSettingsToSave);
         }
 
-
-        // Optionally clear current invoice/sale forms
         setInvoiceItems([]);
         setDirectSaleItems([]);
 
@@ -775,12 +759,9 @@ export default function HomePage() {
       } catch (error: any) {
         console.error('Error processing imported data:', error);
         toast({ title: 'Import Error', description: `Failed to process data. ${error.message || 'Unknown error'}`, variant: 'destructive' });
-      } finally {
-        // Reset loading state if any
       }
     };
     reader.onerror = () => {
-      // Reset loading state if any
       toast({ title: 'File Read Error', description: 'Could not read the selected file.', variant: 'destructive' });
     };
     reader.readAsText(file);
@@ -790,14 +771,11 @@ export default function HomePage() {
 
   const clearCurrentInvoice = useCallback(async () => {
     if (invoiceItems.length > 0) {
-        // Create a map to efficiently update stock for multiple items
         const inventoryUpdatesMap = new Map<string, number>();
-
         invoiceItems.forEach(invoiceItem => {
             inventoryUpdatesMap.set(invoiceItem.id, (inventoryUpdatesMap.get(invoiceItem.id) || 0) + invoiceItem.quantity);
         });
 
-        // Fetch the latest inventory from Firestore to avoid race conditions with local state
         const currentInventory = await getInventoryFromFirestore();
         const updatedInventoryForFirestore = currentInventory.map(invItem => {
             if (inventoryUpdatesMap.has(invItem.id)) {
@@ -806,28 +784,25 @@ export default function HomePage() {
             return invItem;
         });
 
-        await saveMultipleInventoryItemsToFirestore(updatedInventoryForFirestore); // Save updated stock to Firestore
-        setInventory(updatedInventoryForFirestore); // Update local state
+        await saveMultipleInventoryItemsToFirestore(updatedInventoryForFirestore);
+        setInventory(updatedInventoryForFirestore);
 
-        setInvoiceItems([]); // Clear the invoice items
-        // Reset buyer address to global default
+        setInvoiceItems([]);
         getAppSettingsFromFirestore(initialBuyerAddressGlobal).then(settings => setBuyerAddress(settings.buyerAddress));
         toast({ title: "New Invoice", description: "Current invoice cleared and stock restored." });
     } else {
         toast({ title: "New Invoice", description: "Invoice is already empty.", variant: "default" });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [invoiceItems, toast, setInventory]); // Dependencies updated
+  }, [invoiceItems, toast, setInventory]);
 
-  // Callback for when an invoice is updated in ReportsSection (e.g., payment status)
   const handleInvoiceUpdate = (updatedInvoice: Invoice) => {
     setPastInvoices(prev =>
       prev.map(inv => inv.invoiceNumber === updatedInvoice.invoiceNumber ? updatedInvoice : inv)
-        .sort((a, b) => new Date(b.invoiceDate).getTime() - new Date(a.invoiceDate).getTime() || b.invoiceNumber.localeCompare(a.invoiceNumber)) // Re-sort
+        .sort((a, b) => new Date(b.invoiceDate).getTime() - new Date(a.invoiceDate).getTime() || b.invoiceNumber.localeCompare(a.invoiceNumber))
     );
   };
 
-  // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
@@ -843,7 +818,7 @@ export default function HomePage() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [handlePrintInvoice, clearCurrentInvoice, activeSection]); // Dependencies for shortcuts
+  }, [handlePrintInvoice, clearCurrentInvoice, activeSection]);
 
   if (!isClient || isLoading) {
     return (
@@ -899,7 +874,7 @@ export default function HomePage() {
             onFinalizeDirectSale={handleFinalizeDirectSale}
             isFinalizing={isFinalizingDirectSale}
             pastDirectSalesLog={pastDirectSalesLog}
-            fetchPastDirectSalesLog={fetchPastSalesData} // Pass the combined fetcher
+            fetchPastDirectSalesLog={fetchPastSalesData}
           />
         )}
         {activeSection === 'reports' && (
@@ -907,8 +882,8 @@ export default function HomePage() {
             pastInvoices={pastInvoices}
             pastDirectSalesLog={pastDirectSalesLog}
             onInvoiceUpdate={handleInvoiceUpdate}
-            isLoading={isLoading} // Pass the main loading state
-            fetchPastSalesData={fetchPastSalesData} // Pass the combined fetcher
+            isLoading={isLoading}
+            fetchPastSalesData={fetchPastSalesData}
             inventoryItems={inventory}
           />
         )}
@@ -920,6 +895,3 @@ export default function HomePage() {
     </div>
   );
 }
-
-      
-      
