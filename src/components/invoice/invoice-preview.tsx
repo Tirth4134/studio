@@ -15,15 +15,6 @@ interface InvoicePreviewProps {
   buyerAddress: BuyerAddress;
 }
 
-interface TaxSummaryEntry {
-  hsnSac: string;
-  gstRate: number;
-  taxableValue: number;
-  cgstAmount: number;
-  sgstAmount: number;
-  totalItemTax: number;
-}
-
 export default function InvoicePreview({
   invoiceItems,
   invoiceNumber,
@@ -36,36 +27,29 @@ export default function InvoicePreview({
 
   const subTotal = invoiceItems.reduce((sum, item) => sum + item.total, 0);
   
+  // Calculate the accurate total tax amount based on individual item GST rates
   let totalTaxAmount = 0;
-  const taxSummaryMap = new Map<string, TaxSummaryEntry>();
-
   invoiceItems.forEach(item => {
     const itemGstRate = item.gstRate === undefined || item.gstRate === null || isNaN(item.gstRate) ? 0 : item.gstRate;
-    const itemTaxableValue = item.total; // item.total is price * quantity
+    const itemTaxableValue = item.total; 
     const itemIndividualTax = itemTaxableValue * (itemGstRate / 100);
     totalTaxAmount += itemIndividualTax;
-
-    const hsn = item.hsnSac || 'N/A';
-    const rateKey = `${hsn}@${itemGstRate}%`;
-    
-    const currentEntry = taxSummaryMap.get(rateKey) || {
-      hsnSac: hsn,
-      gstRate: itemGstRate,
-      taxableValue: 0,
-      cgstAmount: 0,
-      sgstAmount: 0,
-      totalItemTax: 0,
-    };
-
-    currentEntry.taxableValue += itemTaxableValue;
-    currentEntry.cgstAmount += itemIndividualTax / 2;
-    currentEntry.sgstAmount += itemIndividualTax / 2;
-    currentEntry.totalItemTax += itemIndividualTax;
-    taxSummaryMap.set(rateKey, currentEntry);
   });
   
-  const taxSummaryArray = Array.from(taxSummaryMap.values());
-  const grandTotal = subTotal + totalTaxAmount;
+  // Calculate values for the simplified tax summary table display
+  let totalTaxableValueForSummaryDisplay = 0;
+  invoiceItems.forEach(item => {
+    const itemGstRate = item.gstRate === undefined || item.gstRate === null || isNaN(item.gstRate) ? 0 : item.gstRate;
+    if (itemGstRate > 0) {
+      totalTaxableValueForSummaryDisplay += item.total;
+    }
+  });
+
+  const cgstForSummaryDisplay = totalTaxableValueForSummaryDisplay * 0.09;
+  const sgstForSummaryDisplay = totalTaxableValueForSummaryDisplay * 0.09;
+  const totalTaxForSummaryTable = cgstForSummaryDisplay + sgstForSummaryDisplay;
+
+  const grandTotal = subTotal + totalTaxAmount; // Grand total uses the accurate totalTaxAmount
   const totalQuantity = invoiceItems.reduce((sum, item) => sum + item.quantity, 0);
 
   const numberToWords = (num: number): string => {
@@ -293,14 +277,12 @@ export default function InvoicePreview({
           <table className="w-full text-xs tax-summary-table">
             <thead>
               <tr className="border-b bg-gray-50">
-                <th className="p-1 text-center">HSN/SAC</th>
-                <th className="p-1 text-center">Taxable Value</th>
+                <th className="p-1 text-left">Taxable Value</th>
                 <th colSpan={2} className="p-1 text-center">Central Tax</th>
                 <th colSpan={2} className="p-1 text-center">State Tax</th>
                 <th className="p-1 text-center">Total Tax Amount</th>
               </tr>
               <tr className="border-b">
-                <th className="p-1">&nbsp;</th>
                 <th className="p-1">&nbsp;</th>
                 <th className="p-1 text-center">Rate</th>
                 <th className="p-1 text-center">Amount</th>
@@ -310,31 +292,28 @@ export default function InvoicePreview({
               </tr>
             </thead>
             <tbody>
-            {taxSummaryArray.map((entry, index) => (
-                <tr key={index} className="border-b">
-                    <td className="p-1 text-center">{entry.hsnSac}</td>
-                    <td className="p-1 text-right">₹ {entry.taxableValue.toFixed(2)}</td>
-                    <td className="p-1 text-center">{(entry.gstRate / 2).toFixed(2)}%</td>
-                    <td className="p-1 text-right">₹ {entry.cgstAmount.toFixed(2)}</td>
-                    <td className="p-1 text-center">{(entry.gstRate / 2).toFixed(2)}%</td>
-                    <td className="p-1 text-right">₹ {entry.sgstAmount.toFixed(2)}</td>
-                    <td className="p-1 text-right">₹ {entry.totalItemTax.toFixed(2)}</td>
-                </tr>
-            ))}
+              <tr className="border-b">
+                  <td className="p-1 text-right">₹ {totalTaxableValueForSummaryDisplay.toFixed(2)}</td>
+                  <td className="p-1 text-center">9.00%</td>
+                  <td className="p-1 text-right">₹ {cgstForSummaryDisplay.toFixed(2)}</td>
+                  <td className="p-1 text-center">9.00%</td>
+                  <td className="p-1 text-right">₹ {sgstForSummaryDisplay.toFixed(2)}</td>
+                  <td className="p-1 text-right">₹ {totalTaxForSummaryTable.toFixed(2)}</td>
+              </tr>
               <tr className="font-semibold bg-gray-50">
-                <td className="p-1 text-center">Total</td>
-                <td className="p-1 text-right">₹ {subTotal.toFixed(2)}</td>
+                <td className="p-1 text-left font-bold">Total</td>
                 <td className="p-1">&nbsp;</td>
-                <td className="p-1 text-right">₹ {(totalTaxAmount / 2).toFixed(2)}</td>
+                <td className="p-1 text-right font-bold">₹ {cgstForSummaryDisplay.toFixed(2)}</td>
                 <td className="p-1">&nbsp;</td>
-                <td className="p-1 text-right">₹ {(totalTaxAmount / 2).toFixed(2)}</td>
-                <td className="p-1 text-right">₹ {totalTaxAmount.toFixed(2)}</td>
+                <td className="p-1 text-right font-bold">₹ {sgstForSummaryDisplay.toFixed(2)}</td>
+                <td className="p-1 text-right font-bold">₹ {totalTaxForSummaryTable.toFixed(2)}</td>
               </tr>
             </tbody>
           </table>
         </div>
 
         <div className="border-b p-1 text-xs bg-gray-50 card-footer">
+          {/* This uses the accurate totalTaxAmount from individual item calculations */}
           <div><strong>Tax Amount (in words):</strong> {numberToWords(totalTaxAmount)}</div>
         </div>
 
@@ -377,3 +356,4 @@ export default function InvoicePreview({
     </div>
   );
 }
+
