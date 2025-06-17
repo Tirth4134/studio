@@ -1,4 +1,5 @@
 
+
 import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
 import { getFirestore, collection, doc, getDoc, setDoc, getDocs, writeBatch, deleteDoc, query, where, orderBy, limit, FieldValue, deleteField } from "firebase/firestore";
 import {
@@ -112,7 +113,7 @@ export const getInventoryFromFirestore = async (): Promise<InventoryItem[]> => {
         description: data.description || '',
         purchaseDate: typeof data.purchaseDate === 'string' ? data.purchaseDate : new Date().toLocaleDateString('en-CA'),
         hsnSac: data.hsnSac || '',
-        gstRate: data.gstRate === undefined || data.gstRate === null ? 0 : Number(data.gstRate)
+        gstRate: data.gstRate === undefined || data.gstRate === null || isNaN(data.gstRate) ? 0 : Number(data.gstRate)
       } as InventoryItem);
     });
     return items;
@@ -138,7 +139,7 @@ export const saveInventoryItemToFirestore = async (item: InventoryItem): Promise
       description: item.description || '',
       purchaseDate: item.purchaseDate || new Date().toLocaleDateString('en-CA'),
       hsnSac: item.hsnSac || '',
-      gstRate: item.gstRate === undefined || item.gstRate === null ? 0 : Number(item.gstRate),
+      gstRate: item.gstRate === undefined || item.gstRate === null || isNaN(item.gstRate) ? 0 : Number(item.gstRate),
     };
     await setDoc(itemDocRef, dataToSave);
   } catch (error) {
@@ -170,7 +171,7 @@ export const saveMultipleInventoryItemsToFirestore = async (items: InventoryItem
       description: item.description || '',
       purchaseDate: item.purchaseDate || new Date().toLocaleDateString('en-CA'),
       hsnSac: item.hsnSac || '',
-      gstRate: item.gstRate === undefined || item.gstRate === null ? 0 : Number(item.gstRate),
+      gstRate: item.gstRate === undefined || item.gstRate === null || isNaN(item.gstRate) ? 0 : Number(item.gstRate),
     };
     batch.set(itemDocRef, itemData);
     validItemsInBatchCount++;
@@ -228,6 +229,7 @@ export const getAppSettingsFromFirestore = async (initialGlobalBuyerAddress: Buy
         buyerAddress: mergedBuyerAddress
       };
     } else {
+      // Settings doc doesn't exist, create it with defaults
       const defaultSettings: AppSettingsType = {
         invoiceCounter: 1,
         directSaleCounter: 1,
@@ -238,7 +240,12 @@ export const getAppSettingsFromFirestore = async (initialGlobalBuyerAddress: Buy
     }
   } catch (error) {
     console.error("Error fetching/setting app settings from Firestore:", error);
-    throw error;
+    // Fallback to defaults if read fails, but log error
+    return {
+      invoiceCounter: 1,
+      directSaleCounter: 1,
+      buyerAddress: {...initialGlobalBuyerAddress, email: initialGlobalBuyerAddress.email || '', addressLine2: initialGlobalBuyerAddress.addressLine2 || ''},
+    };
   }
 };
 
@@ -276,10 +283,15 @@ export const saveAllAppSettingsToFirestore = async (settings: AppSettingsType): 
       ...settings,
       invoiceCounter: settings.invoiceCounter || 1,
       directSaleCounter: settings.directSaleCounter || 1,
-      buyerAddress: {
+      buyerAddress: { // Ensure buyerAddress and its optional fields are well-defined
         ...(settings.buyerAddress || {}),
+        name: settings.buyerAddress?.name || 'Default Buyer Name',
+        addressLine1: settings.buyerAddress?.addressLine1 || 'Default Address 1',
+        addressLine2: settings.buyerAddress?.addressLine2 || '',
+        gstin: settings.buyerAddress?.gstin || 'Default GSTIN',
+        stateNameAndCode: settings.buyerAddress?.stateNameAndCode || 'Default State',
+        contact: settings.buyerAddress?.contact || 'Default Contact',
         email: settings.buyerAddress?.email || '',
-        addressLine2: settings.buyerAddress?.addressLine2 || ''
       }
     };
     await setDoc(settingsDocRef, settingsToSave);
@@ -297,23 +309,27 @@ export const getBuyerProfileByGSTIN = async (gstin: string): Promise<BuyerProfil
     const docSnap = await getDoc(profileDocRef);
     if (docSnap.exists()) {
       const data = docSnap.data() as BuyerProfile;
+      // Ensure optional fields have defaults
       return { ...data, email: data.email || '', addressLine2: data.addressLine2 || '' };
     }
     return null;
   } catch (error) {
     console.error(`Error fetching buyer profile for GSTIN ${gstin} from Firestore:`, error);
-    throw error;
+    throw error; // Or return null based on desired error handling
   }
 };
 
 export const getBuyerProfilesByName = async (nameQuery: string): Promise<BuyerProfile[]> => {
   if (!nameQuery || nameQuery.trim() === "") return [];
   try {
-    const standardizedQuery = nameQuery.trim();
+    const standardizedQuery = nameQuery.trim(); // No toLowerCase here, Firestore is case-sensitive by default
+    // For case-insensitive search, you'd typically store a lowercased version of the name
+    // or use more complex querying if Firestore supports it (e.g., with extensions/functions or client-side filtering)
+    // The current query is a prefix match.
     const q = query(
       buyerProfilesCollectionRef,
       where("name", ">=", standardizedQuery),
-      where("name", "<=", standardizedQuery + '\uf8ff'),
+      where("name", "<=", standardizedQuery + '\uf8ff'), // '\uf8ff' is a high-value Unicode character for prefix matching
       limit(10)
     );
     const querySnapshot = await getDocs(q);
@@ -325,33 +341,34 @@ export const getBuyerProfilesByName = async (nameQuery: string): Promise<BuyerPr
     return profiles;
   } catch (error) {
     console.error(`Error fetching buyer profiles by name "${nameQuery}":`, error);
-    return [];
+    return []; // Return empty array on error
   }
 };
 
 
 export const saveBuyerProfile = async (gstin: string, address: BuyerAddress): Promise<void> => {
+  // Use GSTIN as document ID if valid, otherwise don't save (or decide on alternative ID strategy)
   const idToUse = gstin && gstin.trim() !== "" && !gstin.includes("(Placeholder)")
                   ? gstin.trim().toUpperCase()
                   : null;
 
   if (!idToUse) {
     console.log("Buyer profile not saved: No valid GSTIN provided to use as document ID.");
-    return;
+    return; // Or throw an error / handle differently
   }
 
   try {
     const profileDocRef = doc(buyerProfilesCollectionRef, idToUse);
-    const profileData: BuyerProfile = {
+    const profileData: BuyerProfile = { // Ensure all fields from BuyerAddress are present
       name: address.name || '',
       addressLine1: address.addressLine1 || '',
       addressLine2: address.addressLine2 || '',
-      gstin: idToUse,
+      gstin: idToUse, // Use the validated, uppercase GSTIN
       stateNameAndCode: address.stateNameAndCode || '',
       contact: address.contact || '',
       email: address.email || '',
     };
-    await setDoc(profileDocRef, profileData, { merge: true });
+    await setDoc(profileDocRef, profileData, { merge: true }); // Merge to update existing or create new
   } catch (error) {
     console.error(`Error saving buyer profile for GSTIN ${idToUse} to Firestore:`, error);
     throw error;
@@ -367,13 +384,14 @@ export const saveSalesRecordsToFirestore = async (salesRecords: SalesRecord[]): 
   try {
     const batch = writeBatch(db);
     salesRecords.forEach(record => {
-      const recordDocRef = doc(salesRecordsCollectionRef, record.id);
+      const recordDocRef = doc(salesRecordsCollectionRef, record.id); // Assuming record.id is unique
       batch.set(recordDocRef, record);
     });
     await batch.commit();
   } catch (error: any) {
     console.error("CRITICAL ERROR during batch.commit() in saveSalesRecordsToFirestore:", error);
-    throw error;
+    // Consider more specific error handling or re-throwing a custom error
+    throw error; // Re-throw the original error or a custom one
   }
 };
 
@@ -383,6 +401,7 @@ export const getSalesRecordsFromFirestore = async (): Promise<SalesRecord[]> => 
     const records: SalesRecord[] = [];
     querySnapshot.forEach((docSnap) => {
       const data = docSnap.data();
+      // Add robust mapping with fallbacks for each field
       records.push({
         id: docSnap.id,
         invoiceNumber: data.invoiceNumber || "N/A", // This can be INV- or DS-
@@ -399,7 +418,7 @@ export const getSalesRecordsFromFirestore = async (): Promise<SalesRecord[]> => 
     return records;
   } catch (error) {
     console.error("Error fetching sales records from Firestore:", error);
-    return [];
+    return []; // Return empty on error to prevent app crash
   }
 };
 
@@ -408,9 +427,8 @@ export const getSalesRecordsFromFirestore = async (): Promise<SalesRecord[]> => 
 export const saveInvoiceToFirestore = async (invoice: Invoice): Promise<void> => {
   console.log("[Firebase] saveInvoiceToFirestore called with invoice number:", invoice.invoiceNumber);
   try {
-    // Ensure invoiceNumber is always a string
-    const finalInvoiceNumber = invoice.invoiceNumber && typeof invoice.invoiceNumber === 'string' 
-                                ? invoice.invoiceNumber 
+    const finalInvoiceNumber = (invoice.invoiceNumber && typeof invoice.invoiceNumber === 'string' && invoice.invoiceNumber.trim() !== "")
+                                ? invoice.invoiceNumber.trim()
                                 : `INV-ERR-${Date.now()}`;
     if (finalInvoiceNumber !== invoice.invoiceNumber) {
         console.warn(`[Firebase] Corrected invoice number from '${invoice.invoiceNumber}' to '${finalInvoiceNumber}' before saving.`);
@@ -426,7 +444,7 @@ export const saveInvoiceToFirestore = async (invoice: Invoice): Promise<void> =>
       quantity: typeof item.quantity === 'number' ? item.quantity : 0,
       total: typeof item.total === 'number' ? item.total : 0,
       hsnSac: item.hsnSac || '',
-      gstRate: item.gstRate === undefined || item.gstRate === null ? 0 : Number(item.gstRate),
+      gstRate: item.gstRate === undefined || item.gstRate === null || isNaN(item.gstRate) ? 0 : Number(item.gstRate),
     }));
 
     const sanitizedBuyerAddress: BuyerAddress = {
@@ -471,40 +489,41 @@ export const getInvoicesFromFirestore = async (): Promise<Invoice[]> => {
     const invoices: Invoice[] = [];
     querySnapshot.forEach((docSnap) => {
       const data = docSnap.data();
-      console.log(`[Firebase] Raw invoice data for doc ID ${docSnap.id}:`, data);
+      const docId = docSnap.id;
+      console.log(`[Firebase] Raw invoice data for doc ID ${docId}:`, data);
 
-      const finalInvoiceNumber = data.invoiceNumber && typeof data.invoiceNumber === 'string' 
-                                 ? data.invoiceNumber 
-                                 : `ERR-INV-${docSnap.id}`;
+      const finalInvoiceNumber = (data.invoiceNumber && typeof data.invoiceNumber === 'string' && data.invoiceNumber.trim() !== "")
+                                 ? data.invoiceNumber.trim()
+                                 : `ERR-INV-${docId}`;
       if (finalInvoiceNumber !== data.invoiceNumber) {
-          console.warn(`[Firebase] Document ID ${docSnap.id} has invalid/missing invoiceNumber ('${data.invoiceNumber}'). Using fallback: '${finalInvoiceNumber}'.`);
+          console.warn(`[Firebase] Document ID ${docId} has invalid/missing invoiceNumber ('${data.invoiceNumber}'). Using fallback: '${finalInvoiceNumber}'.`);
       }
 
-      const finalInvoiceDate = data.invoiceDate && typeof data.invoiceDate === 'string'
+      const finalInvoiceDate = (data.invoiceDate && typeof data.invoiceDate === 'string' && data.invoiceDate.match(/^\d{4}-\d{2}-\d{2}$/))
                                ? data.invoiceDate
                                : new Date().toLocaleDateString('en-CA');
       if (finalInvoiceDate !== data.invoiceDate) {
-          console.warn(`[Firebase] Document ID ${docSnap.id} (Inv# ${finalInvoiceNumber}) has invalid/missing invoiceDate ('${data.invoiceDate}'). Using fallback: '${finalInvoiceDate}'.`);
+          console.warn(`[Firebase] Document ID ${docId} (Inv# ${finalInvoiceNumber}) has invalid/missing invoiceDate ('${data.invoiceDate}'). Using fallback: '${finalInvoiceDate}'.`);
       }
       
-      const items = (data.items || []).map((item: any, index: number) => ({
-        id: item.id || `item-ERR-${docSnap.id}-${index}`,
+      const items: InvoiceLineItem[] = (data.items || []).map((item: any, index: number) => ({
+        id: item.id || `item-ERR-${docId}-${index}`,
         name: item.name || "N/A",
         price: typeof item.price === 'number' ? item.price : 0,
         quantity: typeof item.quantity === 'number' ? item.quantity : 0,
         total: typeof item.total === 'number' ? item.total : 0,
         hsnSac: item.hsnSac || '',
-        gstRate: item.gstRate === undefined || item.gstRate === null ? 0 : Number(item.gstRate)
+        gstRate: item.gstRate === undefined || item.gstRate === null || isNaN(item.gstRate) ? 0 : Number(item.gstRate)
       }));
 
       const buyerAddress: BuyerAddress = {
         name: data.buyerAddress?.name || 'N/A',
         addressLine1: data.buyerAddress?.addressLine1 || 'N/A',
-        addressLine2: data.buyerAddress?.addressLine2 || '', // Can be empty
+        addressLine2: data.buyerAddress?.addressLine2 || '',
         gstin: data.buyerAddress?.gstin || 'N/A',
         stateNameAndCode: data.buyerAddress?.stateNameAndCode || 'N/A',
         contact: data.buyerAddress?.contact || 'N/A',
-        email: data.buyerAddress?.email || '', // Can be empty
+        email: data.buyerAddress?.email || '',
       };
 
       invoices.push({
@@ -537,11 +556,12 @@ export const updateInvoiceInFirestore = async (invoiceNumber: string, updates: P
     const invoiceDocRef = doc(invoicesCollectionRef, invoiceNumber);
     const updatesToApply: { [key: string]: any } = {};
 
+    // Deep copy items if present to avoid modifying the original updates object
     if (updates.items) {
       updatesToApply.items = updates.items.map(item => ({
         ...item,
         hsnSac: item.hsnSac || '',
-        gstRate: item.gstRate === undefined || item.gstRate === null ? 0 : Number(item.gstRate),
+        gstRate: item.gstRate === undefined || item.gstRate === null || isNaN(item.gstRate) ? 0 : Number(item.gstRate),
       }));
     }
 
@@ -560,7 +580,7 @@ export const updateInvoiceInFirestore = async (invoiceNumber: string, updates: P
     // Handle status update specifically to ensure 'Paid' status is set if grandTotal equals amountPaid
     if (updates.hasOwnProperty('amountPaid') || updates.hasOwnProperty('status') || updates.hasOwnProperty('grandTotal')) {
         const currentDoc = await getDoc(invoiceDocRef);
-        const currentData = currentDoc.exists() ? currentDoc.data() as Invoice : {};
+        const currentData = currentDoc.exists() ? currentDoc.data() as Invoice : {} as Invoice;
         
         const newAmountPaid = updates.hasOwnProperty('amountPaid') ? (updates.amountPaid ?? currentData.amountPaid ?? 0) : (currentData.amountPaid ?? 0);
         const grandTotal = updates.hasOwnProperty('grandTotal') ? (updates.grandTotal ?? currentData.grandTotal ?? 0) : (currentData.grandTotal ?? 0);
@@ -572,9 +592,9 @@ export const updateInvoiceInFirestore = async (invoiceNumber: string, updates: P
                 newStatus = 'Paid';
             } else if (newAmountPaid > 0 && newAmountPaid < grandTotal - epsilon) {
                 newStatus = 'Partially Paid';
-            } else if (newAmountPaid <= 0 && newStatus !== 'Paid') { // if explicitly set to paid and amount is 0, keep paid
+            } else if (newAmountPaid <= 0 && newStatus !== 'Paid' && newStatus !== 'Partially Paid') { 
                  newStatus = 'Unpaid';
-            } else if (newAmountPaid >= grandTotal - epsilon) { // handles overpayment as Paid
+            } else if (newAmountPaid >= grandTotal - epsilon) { 
                  newStatus = 'Paid';
             }
         }
@@ -582,28 +602,30 @@ export const updateInvoiceInFirestore = async (invoiceNumber: string, updates: P
     }
 
 
+    // Copy other fields from updates to updatesToApply
     for (const key in updates) {
       if (updates.hasOwnProperty(key) && !updatesToApply.hasOwnProperty(key)) {
         (updatesToApply as any)[key] = (updates as any)[key];
-        if ((updatesToApply as any)[key] === undefined && key !== 'latestPaymentDate') { // allow latestPaymentDate to be nullified
-            (updatesToApply as any)[key] = deleteField(); // Use deleteField for undefined values to remove them
+        // Handle undefined values correctly, except for latestPaymentDate which can be nullified
+        if ((updatesToApply as any)[key] === undefined && key !== 'latestPaymentDate') {
+            (updatesToApply as any)[key] = deleteField();
         } else if ((updatesToApply as any)[key] === undefined && key === 'latestPaymentDate'){
              (updatesToApply as any)[key] = null;
         }
       }
     }
     
-    // Ensure required fields like invoiceDate and invoiceNumber are not accidentally deleted
+    // Ensure required fields like invoiceDate and invoiceNumber are not accidentally deleted if not present in updates
     if (!updatesToApply.invoiceDate && !updates.invoiceDate) {
         const currentDoc = await getDoc(invoiceDocRef);
-        if (currentDoc.exists() && currentDoc.data().invoiceDate) {
-            updatesToApply.invoiceDate = currentDoc.data().invoiceDate;
+        if (currentDoc.exists() && currentDoc.data()?.invoiceDate) {
+            updatesToApply.invoiceDate = currentDoc.data()!.invoiceDate;
         } else {
-            updatesToApply.invoiceDate = new Date().toLocaleDateString('en-CA'); // Fallback if not in updates and not in doc
+            updatesToApply.invoiceDate = new Date().toLocaleDateString('en-CA'); // Fallback
         }
     }
      if (!updatesToApply.invoiceNumber && !updates.invoiceNumber) {
-        updatesToApply.invoiceNumber = invoiceNumber; // Ensure invoiceNumber is always present
+        updatesToApply.invoiceNumber = invoiceNumber;
     }
 
 
@@ -619,8 +641,8 @@ export const updateInvoiceInFirestore = async (invoiceNumber: string, updates: P
 export const saveDirectSaleLogEntryToFirestore = async (entry: DirectSaleLogEntry): Promise<void> => {
   console.log("[Firebase] saveDirectSaleLogEntryToFirestore called with DS number:", entry.directSaleNumber);
   try {
-    const finalDirectSaleNumber = entry.directSaleNumber && typeof entry.directSaleNumber === 'string'
-                                 ? entry.directSaleNumber
+    const finalDirectSaleNumber = (entry.directSaleNumber && typeof entry.directSaleNumber === 'string' && entry.directSaleNumber.trim() !== "")
+                                 ? entry.directSaleNumber.trim()
                                  : `DS-ERR-${Date.now()}`;
     if (finalDirectSaleNumber !== entry.directSaleNumber) {
         console.warn(`[Firebase] Corrected directSaleNumber from '${entry.directSaleNumber}' to '${finalDirectSaleNumber}' before saving direct sale log.`);
@@ -643,7 +665,7 @@ export const saveDirectSaleLogEntryToFirestore = async (entry: DirectSaleLogEntr
         ...entry,
         id: finalDirectSaleNumber, // Ensure ID matches the doc ID
         directSaleNumber: finalDirectSaleNumber,
-        saleDate: (entry.saleDate && typeof entry.saleDate === 'string') ? entry.saleDate : new Date().toLocaleDateString('en-CA'),
+        saleDate: (entry.saleDate && typeof entry.saleDate === 'string' && entry.saleDate.match(/^\d{4}-\d{2}-\d{2}$/)) ? entry.saleDate : new Date().toLocaleDateString('en-CA'),
         items: itemsToSave,
         grandTotalSaleAmount: typeof entry.grandTotalSaleAmount === 'number' ? entry.grandTotalSaleAmount : 0,
         totalSaleProfit: typeof entry.totalSaleProfit === 'number' ? entry.totalSaleProfit : 0,
@@ -665,25 +687,27 @@ export const getDirectSaleLogEntriesFromFirestore = async (): Promise<DirectSale
     const entries: DirectSaleLogEntry[] = [];
     querySnapshot.forEach((docSnap) => {
       const data = docSnap.data();
-      const finalDirectSaleNumber = data.directSaleNumber && typeof data.directSaleNumber === 'string'
-                                 ? data.directSaleNumber
-                                 : `ERR-DS-${docSnap.id}`;
+      const docId = docSnap.id;
+
+      const finalDirectSaleNumber = (data.directSaleNumber && typeof data.directSaleNumber === 'string' && data.directSaleNumber.trim() !== "")
+                                 ? data.directSaleNumber.trim()
+                                 : `ERR-DS-${docId}`;
       if (finalDirectSaleNumber !== data.directSaleNumber) {
-          console.warn(`[Firebase] Direct Sale Log ${docSnap.id} has invalid/missing directSaleNumber ('${data.directSaleNumber}'). Using fallback: '${finalDirectSaleNumber}'.`);
+          console.warn(`[Firebase] Direct Sale Log ${docId} has invalid/missing directSaleNumber ('${data.directSaleNumber}'). Using fallback: '${finalDirectSaleNumber}'.`);
       }
-      const finalSaleDate = data.saleDate && typeof data.saleDate === 'string'
+      const finalSaleDate = (data.saleDate && typeof data.saleDate === 'string' && data.saleDate.match(/^\d{4}-\d{2}-\d{2}$/))
                             ? data.saleDate
                             : new Date().toLocaleDateString('en-CA');
        if (finalSaleDate !== data.saleDate) {
-          console.warn(`[Firebase] Direct Sale Log ${docSnap.id} (DS# ${finalDirectSaleNumber}) has invalid/missing saleDate ('${data.saleDate}'). Using fallback: '${finalSaleDate}'.`);
+          console.warn(`[Firebase] Direct Sale Log ${docId} (DS# ${finalDirectSaleNumber}) has invalid/missing saleDate ('${data.saleDate}'). Using fallback: '${finalSaleDate}'.`);
       }
 
       entries.push({
-        id: docSnap.id,
+        id: docId, // Use Firestore document ID as the entry ID
         directSaleNumber: finalDirectSaleNumber,
         saleDate: finalSaleDate,
         items: (data.items || []).map((item: any, index: number) => ({
-            itemId: item.itemId || `item-ERR-DS-${docSnap.id}-${index}`,
+            itemId: item.itemId || `item-ERR-DS-${docId}-${index}`,
             itemName: item.itemName || "N/A",
             category: item.category || "Uncategorized",
             quantitySold: typeof item.quantitySold === 'number' ? item.quantitySold : 0,
@@ -709,3 +733,5 @@ export { db, auth, User };
 export type { InventoryItem, BuyerAddress, BuyerProfile, AppSettingsType, SalesRecord, Invoice, InvoiceLineItem, DirectSaleLogEntry, DirectSaleItemDetail };
 
     
+      
+      
