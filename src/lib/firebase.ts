@@ -1,5 +1,4 @@
 
-
 import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
 import { getFirestore, collection, doc, getDoc, setDoc, getDocs, writeBatch, deleteDoc, query, where, orderBy, limit, FieldValue, deleteField } from "firebase/firestore";
 import {
@@ -480,18 +479,18 @@ export const getInvoicesFromFirestore = async (): Promise<Invoice[]> => {
     const invoices: Invoice[] = [];
     querySnapshot.forEach((docSnap) => {
       const data = docSnap.data();
-      const docId = docSnap.id; // Use Firestore document ID for logging and fallback
+      const docId = docSnap.id; 
 
       let finalInvoiceNumber = data.invoiceNumber;
       if (!finalInvoiceNumber || typeof finalInvoiceNumber !== 'string' || finalInvoiceNumber.trim() === "") {
         finalInvoiceNumber = `ERR-INV-${docId}`;
-        console.warn(`[Firebase] Document ID ${docId} in 'invoices' has missing or invalid invoiceNumber ('${data.invoiceNumber}'). Using fallback: '${finalInvoiceNumber}'. Raw data:`, data);
+        console.warn(`[Firebase] Document ID ${docId} in 'invoices' has missing or invalid invoiceNumber ('${data.invoiceNumber}'). Using fallback: '${finalInvoiceNumber}'.`);
       }
 
       let finalInvoiceDate = data.invoiceDate;
       if (!finalInvoiceDate || typeof finalInvoiceDate !== 'string' || !finalInvoiceDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
         const fallbackDate = new Date().toLocaleDateString('en-CA');
-        console.warn(`[Firebase] Document ID ${docId} (Inv# ${finalInvoiceNumber}) in 'invoices' has missing or invalid invoiceDate ('${data.invoiceDate}'). Using fallback: '${fallbackDate}'. Raw data:`, data);
+        console.warn(`[Firebase] Document ID ${docId} (Inv# ${finalInvoiceNumber}) in 'invoices' has missing or invalid invoiceDate ('${data.invoiceDate}'). Using fallback: '${fallbackDate}'.`);
         finalInvoiceDate = fallbackDate;
       }
       
@@ -645,7 +644,7 @@ export const saveDirectSaleLogEntryToFirestore = async (entry: DirectSaleLogEntr
 
     const entryToSave: DirectSaleLogEntry = {
         ...entry,
-        id: finalDirectSaleNumber,
+        id: finalDirectSaleNumber, // Using finalDirectSaleNumber also as the document ID for DirectSaleLogEntry
         directSaleNumber: finalDirectSaleNumber,
         saleDate: (entry.saleDate && typeof entry.saleDate === 'string' && entry.saleDate.match(/^\d{4}-\d{2}-\d{2}$/)) ? entry.saleDate : new Date().toLocaleDateString('en-CA'),
         items: itemsToSave,
@@ -669,23 +668,23 @@ export const getDirectSaleLogEntriesFromFirestore = async (): Promise<DirectSale
     const entries: DirectSaleLogEntry[] = [];
     querySnapshot.forEach((docSnap) => {
       const data = docSnap.data();
-      const docId = docSnap.id; // Use Firestore document ID for logging and fallback
+      const docId = docSnap.id; 
 
       let finalDirectSaleNumber = data.directSaleNumber;
       if (!finalDirectSaleNumber || typeof finalDirectSaleNumber !== 'string' || finalDirectSaleNumber.trim() === "") {
           finalDirectSaleNumber = `ERR-DS-${docId}`;
-          console.warn(`[Firebase] Document ID ${docId} in 'directSalesLog' has missing or invalid directSaleNumber ('${data.directSaleNumber}'). Using fallback: '${finalDirectSaleNumber}'. Raw data:`, data);
+          console.warn(`[Firebase] Document ID ${docId} in 'directSalesLog' has missing or invalid directSaleNumber ('${data.directSaleNumber}'). Using fallback: '${finalDirectSaleNumber}'.`);
       }
 
       let finalSaleDate = data.saleDate;
       if (!finalSaleDate || typeof finalSaleDate !== 'string' || !finalSaleDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
           const fallbackDate = new Date().toLocaleDateString('en-CA');
-          console.warn(`[Firebase] Document ID ${docId} (DS# ${finalDirectSaleNumber}) in 'directSalesLog' has missing or invalid saleDate ('${data.saleDate}'). Using fallback: '${fallbackDate}'. Raw data:`, data);
+          console.warn(`[Firebase] Document ID ${docId} (DS# ${finalDirectSaleNumber}) in 'directSalesLog' has missing or invalid saleDate ('${data.saleDate}'). Using fallback: '${fallbackDate}'.`);
           finalSaleDate = fallbackDate;
       }
 
       entries.push({
-        id: docId,
+        id: finalDirectSaleNumber, // Using finalDirectSaleNumber for the id field to match the document ID
         directSaleNumber: finalDirectSaleNumber,
         saleDate: finalSaleDate,
         items: (data.items || []).map((item: any, index: number) => ({
