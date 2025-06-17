@@ -95,13 +95,13 @@ export default function AddItemForm({ onAddItem }: AddItemFormProps) {
               <Input id="hsnSac" value={hsnSac} onChange={(e) => setHsnSac(e.target.value)} placeholder="e.g. 851712" />
             </div>
             <div>
-              <Label htmlFor="gstRate" className="flex items-center">
+              <Label htmlFor="gstRate"  className="flex items-center">
                 <Percent className="mr-2 h-4 w-4 text-muted-foreground" /> GST Rate (%)
               </Label>
               <Input id="gstRate" type="number" value={gstRate} onChange={(e) => setGstRate(e.target.value)} placeholder="e.g. 18" step="0.01" min="0" max="100"/>
             </div>
             <div>
-              <Label htmlFor="buyingPrice">Buying Price ($)</Label>
+              <Label htmlFor="buyingPrice" >Buying Price ($)</Label>
               <Input id="buyingPrice" type="number" value={buyingPrice} onChange={(e) => setBuyingPrice(e.target.value)} placeholder="0.00" step="0.01" />
             </div>
             <div>
