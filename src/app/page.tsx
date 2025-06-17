@@ -2,12 +2,12 @@
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
-import type { InventoryItem, InvoiceLineItem, AppData, BuyerAddress, SalesRecord, Invoice, BuyerProfile, DirectSaleLineItem } from '@/types';
+import type { InventoryItem, InvoiceLineItem, AppData, BuyerAddress, SalesRecord, Invoice, BuyerProfile, DirectSaleLineItem, DirectSaleLogEntry, DirectSaleItemDetail } from '@/types';
 import AppHeader from '@/components/layout/app-header';
 import InventorySection from '@/components/inventory/inventory-section';
 import InvoiceSection from '@/components/invoice/invoice-section';
 import DirectSaleSection from '@/components/direct-sale/direct-sale-section';
-import ReportsSection from '@/components/reports/reports-section'; 
+import ReportsSection from '@/components/reports/reports-section';
 import ShortcutsDialog from '@/components/shortcuts-dialog';
 import { generateInvoiceNumber, generateUniqueId } from '@/lib/invoice-utils';
 import { useToast } from '@/hooks/use-toast';
@@ -18,14 +18,17 @@ import {
   deleteInventoryItemFromFirestore,
   getAppSettingsFromFirestore,
   saveInvoiceCounterToFirestore,
+  saveDirectSaleCounterToFirestore,
   saveBuyerAddressToAppSettings,
   saveAllAppSettingsToFirestore,
   saveBuyerProfile,
   getBuyerProfileByGSTIN,
-  getBuyerProfilesByName, 
+  getBuyerProfilesByName,
   saveSalesRecordsToFirestore,
-  saveInvoiceToFirestore, 
+  saveInvoiceToFirestore,
   getInvoicesFromFirestore,
+  saveDirectSaleLogEntryToFirestore,
+  getDirectSaleLogEntriesFromFirestore,
 } from '@/lib/firebase';
 import { format } from 'date-fns';
 
@@ -48,7 +51,7 @@ const initialBuyerAddressGlobal: BuyerAddress = {
   email: 'contact@neelkanth.com (Placeholder)',
 };
 
-const cashSaleBuyerAddress: BuyerAddress = {
+const cashSaleBuyerAddress: BuyerAddress = { // Still used for identifying type of buyer in some logic
   name: 'Cash Sale Customer',
   addressLine1: 'N/A',
   addressLine2: '',
@@ -63,15 +66,17 @@ export default function HomePage() {
   const [invoiceItems, setInvoiceItems] = useState<InvoiceLineItem[]>([]);
   const [directSaleItems, setDirectSaleItems] = useState<DirectSaleLineItem[]>([]);
   const [invoiceCounter, setInvoiceCounter] = useState<number>(1);
+  const [directSaleCounter, setDirectSaleCounter] = useState<number>(1);
   const [buyerAddress, setBuyerAddress] = useState<BuyerAddress>(initialBuyerAddressGlobal);
   const [pastInvoices, setPastInvoices] = useState<Invoice[]>([]);
-  const [activeSection, setActiveSection] = useState('inventory'); 
+  const [pastDirectSalesLog, setPastDirectSalesLog] = useState<DirectSaleLogEntry[]>([]);
+  const [activeSection, setActiveSection] = useState('inventory');
   const [invoiceDate, setInvoiceDate] = useState(''); // For regular invoices
   const [currentInvoiceNumber, setCurrentInvoiceNumber] = useState('');
   const [isShortcutsDialogOpen, setIsShortcutsDialogOpen] = useState(false);
   const { toast } = useToast();
   const [isClient, setIsClient] = useState(false);
-  const [isLoading, setIsLoading] = useState(true); 
+  const [isLoading, setIsLoading] = useState(true);
   const [isPrinting, setIsPrinting] = useState(false);
   const [isFinalizingDirectSale, setIsFinalizingDirectSale] = useState(false);
   const [searchedBuyerProfiles, setSearchedBuyerProfiles] = useState<BuyerProfile[]>([]);
@@ -80,22 +85,25 @@ export default function HomePage() {
   useEffect(() => {
     setIsClient(true);
     const today = new Date();
-    setInvoiceDate(today.toLocaleDateString('en-CA')); 
+    setInvoiceDate(today.toLocaleDateString('en-CA'));
     console.log("[HomePage] Mounted, isClient set to true.");
   }, []);
 
-  const fetchPastInvoices = useCallback(async () => {
-    console.log("[HomePage] fetchPastInvoices called.");
+  const fetchPastInvoicesAndDirectSales = useCallback(async () => {
+    console.log("[HomePage] fetchPastInvoicesAndDirectSales called.");
     try {
-      console.log("[HomePage] fetchPastInvoices: Attempting to call getInvoicesFromFirestore...");
-      const fetchedInvoices = await getInvoicesFromFirestore();
-      console.log(`[HomePage] fetchPastInvoices: Successfully fetched ${fetchedInvoices.length} past invoices from Firestore.`);
+      const [fetchedInvoices, fetchedDirectSales] = await Promise.all([
+        getInvoicesFromFirestore(),
+        getDirectSaleLogEntriesFromFirestore()
+      ]);
+      console.log(`[HomePage] Successfully fetched ${fetchedInvoices.length} past invoices and ${fetchedDirectSales.length} direct sales log entries.`);
       setPastInvoices(fetchedInvoices);
-      console.log(`[HomePage] fetchPastInvoices: setPastInvoices called with ${fetchedInvoices.length} invoices.`);
+      setPastDirectSalesLog(fetchedDirectSales);
     } catch (error: any) {
-      console.error("[HomePage] fetchPastInvoices: Error fetching past invoices:", error);
-      toast({ title: "Error Fetching Past Invoices", description: `Could not fetch past invoices. ${error.message}`, variant: "destructive" });
-      setPastInvoices([]); 
+      console.error("[HomePage] Error fetching past invoices or direct sales:", error);
+      toast({ title: "Error Fetching Sales History", description: `Could not fetch past sales. ${error.message}`, variant: "destructive" });
+      setPastInvoices([]);
+      setPastDirectSalesLog([]);
     }
   }, [toast]);
 
@@ -103,18 +111,18 @@ export default function HomePage() {
     if (isClient) {
       const fetchData = async () => {
         console.log("[HomePage] fetchData triggered (isClient true).");
-        setIsLoading(true); 
+        setIsLoading(true);
         try {
           const firestoreInventory = await getInventoryFromFirestore();
           console.log("[HomePage] fetchData: Fetched inventory from Firestore:", firestoreInventory.length, "items.");
           const appSettings = await getAppSettingsFromFirestore(initialBuyerAddressGlobal);
-          console.log("[HomePage] fetchData: Fetched app settings from Firestore. Counter:", appSettings.invoiceCounter);
-          
-          await fetchPastInvoices(); 
-          console.log("[HomePage] fetchData: Past invoices fetched.");
+          console.log("[HomePage] fetchData: Fetched app settings. InvoiceCounter:", appSettings.invoiceCounter, "DirectSaleCounter:", appSettings.directSaleCounter);
+
+          await fetchPastInvoicesAndDirectSales();
+          console.log("[HomePage] fetchData: Past invoices and direct sales fetched.");
 
 
-          if (firestoreInventory.length === 0 && appSettings.invoiceCounter === 1 && appSettings.buyerAddress.name === initialBuyerAddressGlobal.name) {
+          if (firestoreInventory.length === 0 && appSettings.invoiceCounter === 1 && appSettings.directSaleCounter === 1 && appSettings.buyerAddress.name === initialBuyerAddressGlobal.name) {
             toast({
                 title: "Initializing Database",
                 description: "No existing data found. Seeding with default data...",
@@ -123,39 +131,44 @@ export default function HomePage() {
             });
             console.log("[HomePage] fetchData: Firestore is empty, seeding with initial data:", initialInventoryForSeed.length, "items.");
             await saveMultipleInventoryItemsToFirestore(initialInventoryForSeed);
-            const initialSettingsToSave = {
+            const initialSettingsToSave: typeof appSettings = {
                 invoiceCounter: 1,
+                directSaleCounter: 1,
                 buyerAddress: initialBuyerAddressGlobal
             };
             await saveAllAppSettingsToFirestore(initialSettingsToSave);
             console.log("[HomePage] fetchData: Initial data seeded to Firestore.");
-            
+
             setInventory(initialInventoryForSeed);
-            setInvoiceCounter(initialSettingsToSave.invoiceCounter); 
+            setInvoiceCounter(initialSettingsToSave.invoiceCounter);
+            setDirectSaleCounter(initialSettingsToSave.directSaleCounter);
             setBuyerAddress(initialSettingsToSave.buyerAddress);
             toast({
                 title: "Application Initialized",
                 description: "Default data loaded into the database.",
                 variant: "default",
                 duration: 3000,
-            });   
+            });
           } else {
             setInventory(firestoreInventory);
             setInvoiceCounter(appSettings.invoiceCounter);
-            setBuyerAddress(appSettings.buyerAddress); 
+            setDirectSaleCounter(appSettings.directSaleCounter);
+            setBuyerAddress(appSettings.buyerAddress);
              toast({
                 title: "Data Loaded",
-                description: "Successfully fetched inventory, settings, and past invoices from Firestore.",
+                description: "Successfully fetched inventory, settings, and sales history from Firestore.",
                 variant: "default",
                 duration: 3000,
             });
           }
         } catch (error: any) {
             console.error("[HomePage] fetchData: Error during initial data fetch or processing:", error);
-            setInventory([]); 
-            setInvoiceCounter(1); 
-            setBuyerAddress(initialBuyerAddressGlobal); 
+            setInventory([]);
+            setInvoiceCounter(1);
+            setDirectSaleCounter(1);
+            setBuyerAddress(initialBuyerAddressGlobal);
             setPastInvoices([]);
+            setPastDirectSalesLog([]);
             toast({
                 title: "Data Loading Error",
                 description: `Could not load data from Firestore. Using defaults. Error: ${error.message || 'Unknown error'}`,
@@ -163,14 +176,14 @@ export default function HomePage() {
                 duration: 7000
             });
         } finally {
-            setIsLoading(false); 
+            setIsLoading(false);
             console.log("[HomePage] fetchData finished, isLoading set to false.");
         }
       };
       fetchData();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isClient, toast, fetchPastInvoices]); 
+  }, [isClient, toast, fetchPastInvoicesAndDirectSales]);
 
   useEffect(() => {
     setCurrentInvoiceNumber(generateInvoiceNumber(invoiceCounter));
@@ -180,7 +193,12 @@ export default function HomePage() {
     setInvoiceCounter(newCounter);
     await saveInvoiceCounterToFirestore(newCounter);
   };
-  
+
+  const updateDirectSaleCounterStateAndDb = async (newCounter: number) => {
+    setDirectSaleCounter(newCounter);
+    await saveDirectSaleCounterToFirestore(newCounter);
+  };
+
   const updateInventoryStateAndDb = async (newInventory: InventoryItem[] | ((prevState: InventoryItem[]) => InventoryItem[])) => {
     console.log("[HomePage] updateInventoryStateAndDb called.");
     let finalInventoryToSave: InventoryItem[];
@@ -244,12 +262,12 @@ export default function HomePage() {
         if (inventoryItem) {
           const profit = (invoiceItem.price - inventoryItem.buyingPrice) * invoiceItem.quantity;
           salesRecordsToSave.push({
-            id: generateUniqueId(), 
-            invoiceNumber: currentInvoiceNumber,
-            saleDate: invoiceDate, 
+            id: generateUniqueId(),
+            invoiceNumber: currentInvoiceNumber, // INV-XXXX
+            saleDate: invoiceDate,
             itemId: invoiceItem.id,
             itemName: invoiceItem.name,
-            category: inventoryItem.category, 
+            category: inventoryItem.category,
             quantitySold: invoiceItem.quantity,
             sellingPricePerUnit: invoiceItem.price,
             buyingPricePerUnit: inventoryItem.buyingPrice,
@@ -270,9 +288,9 @@ export default function HomePage() {
           toast({ title: "Sales Recorded", description: `${salesRecordsToSave.length} item sales recorded successfully for profit tracking.`, variant: "default", duration: 4000 });
           console.log("[HomePage] handlePrintInvoice: Sales records saved successfully.");
       } else {
-          salesRecordsSavedSuccessfully = true; 
+          salesRecordsSavedSuccessfully = true;
       }
-      
+
       const subTotal = invoiceItems.reduce((sum, item) => sum + item.total, 0);
       let totalTaxAmount = 0;
       invoiceItems.forEach(item => {
@@ -284,24 +302,24 @@ export default function HomePage() {
       const invoiceToSave: Invoice = {
         invoiceNumber: currentInvoiceNumber,
         invoiceDate: invoiceDate,
-        buyerGstin: buyerAddress.gstin, 
+        buyerGstin: buyerAddress.gstin,
         buyerName: buyerAddress.name,
         buyerAddress: buyerAddress,
         items: invoiceItems,
         subTotal: subTotal,
         taxAmount: totalTaxAmount,
         grandTotal: grandTotal,
-        amountPaid: 0, 
-        status: 'Unpaid', 
+        amountPaid: 0,
+        status: 'Unpaid',
         latestPaymentDate: null,
       };
 
       console.log("[HomePage] handlePrintInvoice: Attempting to save invoice. Data:", JSON.stringify(invoiceToSave, null, 2).substring(0, 500) + "...");
-      await saveInvoiceToFirestore(invoiceToSave); 
+      await saveInvoiceToFirestore(invoiceToSave);
       invoiceSavedSuccessfully = true;
       toast({ title: "Invoice Saved", description: `Invoice ${currentInvoiceNumber} saved successfully to database.`, variant: "default" });
       console.log(`[HomePage] handlePrintInvoice: Invoice ${currentInvoiceNumber} saved successfully to Firestore.`);
-      
+
       if (invoiceSavedSuccessfully && salesRecordsSavedSuccessfully) {
         setPastInvoices(prev => [invoiceToSave, ...prev].sort((a, b) => new Date(b.invoiceDate).getTime() - new Date(a.invoiceDate).getTime() || b.invoiceNumber.localeCompare(a.invoiceNumber)));
         console.log("[HomePage] handlePrintInvoice: Past invoices state updated locally.");
@@ -311,12 +329,12 @@ export default function HomePage() {
 
         updateInvoiceCounterStateAndDb(invoiceCounter + 1);
         console.log("[HomePage] handlePrintInvoice: Invoice counter updated.");
-      
+
         getAppSettingsFromFirestore(initialBuyerAddressGlobal).then(settings => {
           setBuyerAddress(settings.buyerAddress);
           console.log("[HomePage] handlePrintInvoice: Buyer address reset from settings for new invoice.");
         });
-         setInvoiceItems([]); 
+         setInvoiceItems([]);
       } else {
         throw new Error("One or more database save operations failed during invoice finalization.");
       }
@@ -329,7 +347,7 @@ export default function HomePage() {
         console.log("[HomePage] handlePrintInvoice: Finalization process finished, isPrinting set to false.");
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPrinting, invoiceItems, inventory, currentInvoiceNumber, invoiceDate, invoiceCounter, toast, buyerAddress, initialBuyerAddressGlobal]);
+  }, [isPrinting, invoiceItems, inventory, currentInvoiceNumber, invoiceDate, invoiceCounter, toast, buyerAddress]);
 
 
   const handleFinalizeDirectSale = useCallback(async (saleDate: string, items: DirectSaleLineItem[]) => {
@@ -343,19 +361,23 @@ export default function HomePage() {
     }
     setIsFinalizingDirectSale(true);
 
-    const directSaleInvoiceNumber = generateInvoiceNumber(invoiceCounter);
+    const currentDirectSaleNumber = `DS-${String(directSaleCounter).padStart(4, '0')}`;
 
     try {
         const salesRecordsToSave: SalesRecord[] = [];
-        const invoiceLineItems: InvoiceLineItem[] = [];
+        const directSaleLogItems: DirectSaleItemDetail[] = [];
+        let grandTotalSaleAmount = 0;
+        let totalSaleProfit = 0;
 
         for (const saleItem of items) {
             const inventoryItem = inventory.find(inv => inv.id === saleItem.id);
             if (inventoryItem) {
-                const profit = (saleItem.price - inventoryItem.buyingPrice) * saleItem.quantity;
+                const itemProfit = (saleItem.price - inventoryItem.buyingPrice) * saleItem.quantity;
+                const itemTotalPrice = saleItem.price * saleItem.quantity;
+
                 salesRecordsToSave.push({
                     id: generateUniqueId(),
-                    invoiceNumber: directSaleInvoiceNumber,
+                    invoiceNumber: currentDirectSaleNumber, // Use DS-XXXX for SalesRecord link
                     saleDate: saleDate,
                     itemId: saleItem.id,
                     itemName: saleItem.name,
@@ -363,64 +385,54 @@ export default function HomePage() {
                     quantitySold: saleItem.quantity,
                     sellingPricePerUnit: saleItem.price,
                     buyingPricePerUnit: inventoryItem.buyingPrice,
-                    totalProfit: profit,
+                    totalProfit: itemProfit,
                 });
-                invoiceLineItems.push({
-                    id: saleItem.id,
-                    name: saleItem.name,
-                    price: saleItem.price,
-                    quantity: saleItem.quantity,
-                    total: saleItem.total,
-                    hsnSac: inventoryItem.hsnSac,
-                    gstRate: inventoryItem.gstRate,
+
+                directSaleLogItems.push({
+                    itemId: saleItem.id,
+                    itemName: saleItem.name,
+                    category: inventoryItem.category,
+                    quantitySold: saleItem.quantity,
+                    sellingPricePerUnit: saleItem.price,
+                    buyingPricePerUnit: inventoryItem.buyingPrice,
+                    totalItemProfit: itemProfit,
+                    totalItemPrice: itemTotalPrice,
                 });
+                grandTotalSaleAmount += itemTotalPrice;
+                totalSaleProfit += itemProfit;
             } else {
                 console.warn(`[HomePage] handleFinalizeDirectSale: Could not find inventory item with ID ${saleItem.id}.`);
             }
         }
 
-        if (salesRecordsToSave.length === 0 && invoiceLineItems.length === 0) {
+        if (salesRecordsToSave.length === 0) {
             throw new Error("No valid items processed for direct sale.");
         }
-        
+
         console.log("[HomePage] handleFinalizeDirectSale: Attempting to save sales records:", salesRecordsToSave.length, "records.");
         await saveSalesRecordsToFirestore(salesRecordsToSave);
         console.log("[HomePage] handleFinalizeDirectSale: Sales records saved successfully.");
 
-        const subTotal = invoiceLineItems.reduce((sum, item) => sum + item.total, 0);
-        let totalTaxAmount = 0;
-        invoiceLineItems.forEach(item => {
-            const itemGstRate = item.gstRate === undefined || item.gstRate === null || isNaN(item.gstRate) ? 0 : item.gstRate;
-            totalTaxAmount += item.total * (itemGstRate / 100);
-        });
-        const grandTotal = subTotal + totalTaxAmount;
-
-        const directSaleInvoiceToSave: Invoice = {
-            invoiceNumber: directSaleInvoiceNumber,
-            invoiceDate: saleDate,
-            buyerGstin: cashSaleBuyerAddress.gstin,
-            buyerName: cashSaleBuyerAddress.name,
-            buyerAddress: cashSaleBuyerAddress,
-            items: invoiceLineItems,
-            subTotal: subTotal,
-            taxAmount: totalTaxAmount,
-            grandTotal: grandTotal,
-            amountPaid: grandTotal, // Direct sale is fully paid
-            status: 'Paid',
-            latestPaymentDate: saleDate,
+        const directSaleLogEntry: DirectSaleLogEntry = {
+            id: currentDirectSaleNumber,
+            directSaleNumber: currentDirectSaleNumber,
+            saleDate: saleDate,
+            items: directSaleLogItems,
+            grandTotalSaleAmount: grandTotalSaleAmount,
+            totalSaleProfit: totalSaleProfit,
         };
 
-        console.log("[HomePage] handleFinalizeDirectSale: Attempting to save direct sale invoice. Data:", JSON.stringify(directSaleInvoiceToSave, null, 2).substring(0, 500) + "...");
-        await saveInvoiceToFirestore(directSaleInvoiceToSave);
-        toast({ title: "Direct Sale Recorded", description: `Sale ${directSaleInvoiceNumber} recorded successfully.`, variant: "default" });
-        console.log(`[HomePage] handleFinalizeDirectSale: Direct sale invoice ${directSaleInvoiceNumber} saved successfully.`);
+        console.log("[HomePage] handleFinalizeDirectSale: Attempting to save direct sale log entry. Data:", JSON.stringify(directSaleLogEntry, null, 2).substring(0, 500) + "...");
+        await saveDirectSaleLogEntryToFirestore(directSaleLogEntry);
+        toast({ title: "Direct Sale Recorded", description: `Sale ${currentDirectSaleNumber} recorded successfully.`, variant: "default" });
+        console.log(`[HomePage] handleFinalizeDirectSale: Direct sale log entry ${currentDirectSaleNumber} saved successfully.`);
 
-        setPastInvoices(prev => [directSaleInvoiceToSave, ...prev].sort((a, b) => new Date(b.invoiceDate).getTime() - new Date(a.invoiceDate).getTime() || b.invoiceNumber.localeCompare(a.invoiceNumber)));
-        console.log("[HomePage] handleFinalizeDirectSale: Past invoices state updated locally.");
-        
-        updateInvoiceCounterStateAndDb(invoiceCounter + 1); // Increment invoice counter
-        console.log("[HomePage] handleFinalizeDirectSale: Invoice counter updated.");
-        
+        setPastDirectSalesLog(prev => [directSaleLogEntry, ...prev].sort((a, b) => new Date(b.saleDate).getTime() - new Date(a.saleDate).getTime() || b.directSaleNumber.localeCompare(a.directSaleNumber)));
+        console.log("[HomePage] handleFinalizeDirectSale: Past direct sales log state updated locally.");
+
+        updateDirectSaleCounterStateAndDb(directSaleCounter + 1);
+        console.log("[HomePage] handleFinalizeDirectSale: Direct sale counter updated.");
+
         setDirectSaleItems([]); // Clear the direct sale items form
 
     } catch (error) {
@@ -430,7 +442,7 @@ export default function HomePage() {
         setIsFinalizingDirectSale(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isFinalizingDirectSale, inventory, invoiceCounter, toast]);
+  }, [isFinalizingDirectSale, inventory, directSaleCounter, toast]);
 
 
   const lookupBuyerByGstin = async (gstin: string) => {
@@ -446,27 +458,27 @@ export default function HomePage() {
             name: profile.name || '',
             addressLine1: profile.addressLine1 || '',
             addressLine2: profile.addressLine2 || '',
-            gstin: profile.gstin, 
+            gstin: profile.gstin,
             stateNameAndCode: profile.stateNameAndCode || '',
             contact: profile.contact || '',
-            email: profile.email || '', 
+            email: profile.email || '',
         };
-        setBuyerAddress(completeProfile); 
+        setBuyerAddress(completeProfile);
         toast({ title: "Buyer Found", description: `Details for ${profile.name || 'Buyer'} loaded.`, variant: "default" });
-        setSearchedBuyerProfiles([]); 
+        setSearchedBuyerProfiles([]);
       } else {
         toast({ title: "Buyer Not Found", description: "No existing profile for this GSTIN. Please enter details manually.", variant: "default" });
         setBuyerAddress(prev => ({
-          ...initialBuyerAddressGlobal, 
-          gstin: gstin.trim().toUpperCase(), 
-          name: '', 
+          ...initialBuyerAddressGlobal,
+          gstin: gstin.trim().toUpperCase(),
+          name: '',
           addressLine1: '',
           addressLine2: '',
           stateNameAndCode: '',
           contact: '',
           email: ''
         }));
-        setSearchedBuyerProfiles([]); 
+        setSearchedBuyerProfiles([]);
       }
     } catch (error) {
       console.error("Error looking up buyer by GSTIN:", error);
@@ -487,20 +499,20 @@ export default function HomePage() {
       const profiles = await getBuyerProfilesByName(nameQuery);
       if (profiles.length > 0) {
         setSearchedBuyerProfiles(profiles);
-        if (profiles.length === 1) { 
+        if (profiles.length === 1) {
           const singleProfile = profiles[0];
            const completeProfile: BuyerAddress = {
               name: singleProfile.name || '',
               addressLine1: singleProfile.addressLine1 || '',
               addressLine2: singleProfile.addressLine2 || '',
-              gstin: singleProfile.gstin, 
+              gstin: singleProfile.gstin,
               stateNameAndCode: singleProfile.stateNameAndCode || '',
               contact: singleProfile.contact || '',
-              email: singleProfile.email || '', 
+              email: singleProfile.email || '',
           };
           setBuyerAddress(completeProfile);
           toast({ title: "Buyer Found", description: `Details for ${singleProfile.name} loaded.`, variant: "default" });
-          setSearchedBuyerProfiles([]); 
+          setSearchedBuyerProfiles([]);
         } else {
           toast({ title: "Multiple Buyers Found", description: `Found ${profiles.length} profiles. Please select one.`, variant: "default" });
         }
@@ -523,10 +535,11 @@ export default function HomePage() {
     try {
       const currentInventory = await getInventoryFromFirestore();
       const currentSettings = await getAppSettingsFromFirestore(initialBuyerAddressGlobal);
-      
+
       const appData: AppData = {
         items: currentInventory,
         invoiceCounter: currentSettings.invoiceCounter,
+        directSaleCounter: currentSettings.directSaleCounter,
         buyerAddress: currentSettings.buyerAddress,
       };
       const dataStr = JSON.stringify(appData, null, 2);
@@ -547,22 +560,22 @@ export default function HomePage() {
       setIsLoading(false);
     }
   };
-  
+
   const mapRawItemToInventoryItemEnsuringUniqueId = (
     rawItem: any,
-    allExistingItemIds: Set<string>, 
-    tempImportedItemIdsForThisBatch: Set<string> 
+    allExistingItemIds: Set<string>,
+    tempImportedItemIdsForThisBatch: Set<string>
   ): InventoryItem | null => {
     const normalizePrice = (price: any): number => {
       if (typeof price === 'number') return price;
       if (typeof price === 'string') {
         const numStr = price.replace(/[^0-9.]/g, '');
         const val = parseFloat(numStr);
-        return isNaN(val) ? NaN : val; 
+        return isNaN(val) ? NaN : val;
       }
       return NaN;
     };
-  
+
     const normalizeStock = (stock: any): number => {
       if (typeof stock === 'number') return Math.floor(stock);
       if (typeof stock === 'string') {
@@ -575,7 +588,7 @@ export default function HomePage() {
     const name = rawItem.name || rawItem.item_name || rawItem.itemName || rawItem['Item Name'];
     const category = rawItem.category || rawItem.Category;
     const sellingPrice = normalizePrice(rawItem.price || rawItem.Price || rawItem.sellingPrice);
-    const buyingPrice = normalizePrice(rawItem.buyingPrice || rawItem.costPrice || rawItem.cost_price || 0); 
+    const buyingPrice = normalizePrice(rawItem.buyingPrice || rawItem.costPrice || rawItem.cost_price || 0);
     const stock = normalizeStock(rawItem.stock || rawItem.Stock);
     const description = rawItem.description || rawItem.Description || '';
     const purchaseDate = rawItem.purchaseDate || rawItem.purchase_date;
@@ -585,8 +598,8 @@ export default function HomePage() {
 
     if (!name || typeof name !== 'string' || name.trim() === '') return null;
     if (isNaN(sellingPrice) || sellingPrice < 0) return null;
-    if (isNaN(buyingPrice) || buyingPrice < 0) return null; 
-    if (isNaN(stock) || stock < 0) return null; 
+    if (isNaN(buyingPrice) || buyingPrice < 0) return null;
+    if (isNaN(stock) || stock < 0) return null;
     if (!category || typeof category !== 'string' || category.trim() === '') return null;
     if (gstRate !== undefined && (isNaN(gstRate) || gstRate < 0 || gstRate > 100)) return null;
 
@@ -597,10 +610,10 @@ export default function HomePage() {
     }
     tempImportedItemIdsForThisBatch.add(finalId);
 
-    const validatedPurchaseDate = typeof purchaseDate === 'string' && purchaseDate.match(/^\d{4}-\d{2}-\d{2}$/) 
-                                 ? purchaseDate 
+    const validatedPurchaseDate = typeof purchaseDate === 'string' && purchaseDate.match(/^\d{4}-\d{2}-\d{2}$/)
+                                 ? purchaseDate
                                  : new Date().toLocaleDateString('en-CA');
-  
+
     return {
       id: finalId,
       name: name.trim(),
@@ -621,7 +634,7 @@ export default function HomePage() {
       toast({ title: "No File Selected", description: "Please select a JSON file to import.", variant: "default" });
       return;
     }
-    
+
     const MAX_FILE_SIZE_MB = 5;
     if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
       toast({ title: 'File Too Large', description: `Please select a file smaller than ${MAX_FILE_SIZE_MB}MB.`, variant: 'destructive' });
@@ -636,11 +649,12 @@ export default function HomePage() {
         if (!result) {
           throw new Error("File content is empty or unreadable.");
         }
-        
+
         const parsedData = JSON.parse(result);
 
         let parsedItems: any[] = [];
         let importedInvoiceCounter: number | undefined = undefined;
+        let importedDirectSaleCounter: number | undefined = undefined; // Added for direct sale counter
         let importedBuyerAddress: BuyerAddress | undefined = undefined;
 
         if (Array.isArray(parsedData)) {
@@ -648,37 +662,38 @@ export default function HomePage() {
         } else if (typeof parsedData === 'object' && parsedData !== null) {
           if (Array.isArray(parsedData.items)) parsedItems = parsedData.items;
           if (typeof parsedData.invoiceCounter === 'number') importedInvoiceCounter = parsedData.invoiceCounter;
+          if (typeof parsedData.directSaleCounter === 'number') importedDirectSaleCounter = parsedData.directSaleCounter; // Handle direct sale counter
           if (typeof parsedData.buyerAddress === 'object' && parsedData.buyerAddress !== null) {
              const ba = parsedData.buyerAddress;
              if (ba.name && ba.addressLine1 && ba.gstin && ba.stateNameAndCode && ba.contact) {
                 importedBuyerAddress = {
                     name: ba.name,
                     addressLine1: ba.addressLine1,
-                    addressLine2: ba.addressLine2 || '', 
+                    addressLine2: ba.addressLine2 || '',
                     gstin: ba.gstin,
                     stateNameAndCode: ba.stateNameAndCode,
                     contact: ba.contact,
-                    email: ba.email || '', 
+                    email: ba.email || '',
                 };
              } else {
                 toast({ title: "Warning", description: "Buyer address in file is incomplete, skipping.", variant: "default"});
              }
           }
         } else {
-          throw new Error("Invalid JSON structure. Expected an array of items or an object with 'items', 'invoiceCounter', 'buyerAddress'.");
+          throw new Error("Invalid JSON structure. Expected an array of items or an object with 'items', counters, 'buyerAddress'.");
         }
 
-        if (parsedItems.length === 0 && importedInvoiceCounter === undefined && importedBuyerAddress === undefined) {
-          toast({ title: "No Valid Data Found", description: "File does not contain items, invoice counter, or buyer address.", variant: "default" });
+        if (parsedItems.length === 0 && importedInvoiceCounter === undefined && importedDirectSaleCounter === undefined && importedBuyerAddress === undefined) {
+          toast({ title: "No Valid Data Found", description: "File does not contain items or settings.", variant: "default" });
           setIsLoading(false);
           return;
         }
-        
+
         const currentFirestoreInventory = await getInventoryFromFirestore();
         const newInventoryState = [...currentFirestoreInventory];
         const currentInventoryItemIds = new Set(newInventoryState.map(item => item.id));
         const tempImportedItemIdsForThisBatch = new Set<string>();
-        
+
         let addedCount = 0;
         let updatedCount = 0;
         let skippedCount = 0;
@@ -701,37 +716,53 @@ export default function HomePage() {
             const currentItem = newInventoryState[existingItemIndex];
             newInventoryState[existingItemIndex] = {
               ...currentItem,
-              id: currentItem.id, 
-              stock: currentItem.stock + importedItem.stock, 
-              buyingPrice: importedItem.buyingPrice, 
-              price: importedItem.price, 
+              id: currentItem.id,
+              stock: currentItem.stock + importedItem.stock,
+              buyingPrice: importedItem.buyingPrice,
+              price: importedItem.price,
               description: importedItem.description,
-              purchaseDate: importedItem.purchaseDate || currentItem.purchaseDate, 
+              purchaseDate: importedItem.purchaseDate || currentItem.purchaseDate,
               hsnSac: importedItem.hsnSac || currentItem.hsnSac,
               gstRate: importedItem.gstRate !== undefined ? importedItem.gstRate : currentItem.gstRate,
             };
             updatedCount++;
           } else {
             newInventoryState.push(importedItem);
-            currentInventoryItemIds.add(importedItem.id); 
+            currentInventoryItemIds.add(importedItem.id);
             tempImportedItemIdsForThisBatch.add(importedItem.id);
             addedCount++;
           }
         });
-        
-        await saveMultipleInventoryItemsToFirestore(newInventoryState);
-        setInventory(newInventoryState); 
 
+        await saveMultipleInventoryItemsToFirestore(newInventoryState);
+        setInventory(newInventoryState);
+
+        const settingsToUpdate: Partial<AppSettingsType> = {};
         if (importedInvoiceCounter !== undefined) {
-          await saveInvoiceCounterToFirestore(importedInvoiceCounter);
+          settingsToUpdate.invoiceCounter = importedInvoiceCounter;
           setInvoiceCounter(importedInvoiceCounter);
         }
-        if (importedBuyerAddress) {
-          await saveBuyerAddressToAppSettings(importedBuyerAddress); 
-          setBuyerAddress(importedBuyerAddress); 
+        if (importedDirectSaleCounter !== undefined) {
+          settingsToUpdate.directSaleCounter = importedDirectSaleCounter;
+          setDirectSaleCounter(importedDirectSaleCounter);
         }
-        
-        setInvoiceItems([]); 
+        if (importedBuyerAddress) {
+          settingsToUpdate.buyerAddress = importedBuyerAddress;
+          setBuyerAddress(importedBuyerAddress);
+        }
+        if (Object.keys(settingsToUpdate).length > 0) {
+          // Fetch existing settings to merge with, rather than overwriting entirely if only some are imported
+          const currentSettings = await getAppSettingsFromFirestore(initialBuyerAddressGlobal);
+          const finalSettingsToSave = {
+            invoiceCounter: settingsToUpdate.invoiceCounter ?? currentSettings.invoiceCounter,
+            directSaleCounter: settingsToUpdate.directSaleCounter ?? currentSettings.directSaleCounter,
+            buyerAddress: settingsToUpdate.buyerAddress ?? currentSettings.buyerAddress,
+          };
+          await saveAllAppSettingsToFirestore(finalSettingsToSave);
+        }
+
+
+        setInvoiceItems([]);
         setDirectSaleItems([]);
 
         toast({ title: 'Import Complete', description: `Processed ${parsedItems.length} records. Settings updated.`, });
@@ -752,12 +783,12 @@ export default function HomePage() {
     };
     reader.readAsText(file);
   };
-  
+
   const handleShowShortcuts = () => setIsShortcutsDialogOpen(true);
 
   const clearCurrentInvoice = useCallback(async () => {
     if (invoiceItems.length > 0) {
-        const inventoryUpdatesMap = new Map<string, number>(); 
+        const inventoryUpdatesMap = new Map<string, number>();
 
         invoiceItems.forEach(invoiceItem => {
             inventoryUpdatesMap.set(invoiceItem.id, (inventoryUpdatesMap.get(invoiceItem.id) || 0) + invoiceItem.quantity);
@@ -770,21 +801,21 @@ export default function HomePage() {
             }
             return invItem;
         });
-        
+
         await saveMultipleInventoryItemsToFirestore(updatedInventoryForFirestore);
         setInventory(updatedInventoryForFirestore);
-        
-        setInvoiceItems([]); 
+
+        setInvoiceItems([]);
         getAppSettingsFromFirestore(initialBuyerAddressGlobal).then(settings => setBuyerAddress(settings.buyerAddress));
         toast({ title: "New Invoice", description: "Current invoice cleared and stock restored." });
     } else {
         toast({ title: "New Invoice", description: "Invoice is already empty.", variant: "default" });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [invoiceItems, toast, setInventory, initialBuyerAddressGlobal]);
+  }, [invoiceItems, toast, setInventory]);
 
   const handleInvoiceUpdate = (updatedInvoice: Invoice) => {
-    setPastInvoices(prev => 
+    setPastInvoices(prev =>
       prev.map(inv => inv.invoiceNumber === updatedInvoice.invoiceNumber ? updatedInvoice : inv)
         .sort((a, b) => new Date(b.invoiceDate).getTime() - new Date(a.invoiceDate).getTime() || b.invoiceNumber.localeCompare(a.invoiceNumber))
     );
@@ -800,7 +831,7 @@ export default function HomePage() {
       else if (ctrlOrCmd && event.key.toLowerCase() === 'i') { event.preventDefault(); setActiveSection('inventory'); }
       else if (ctrlOrCmd && event.key.toLowerCase() === 'b') { event.preventDefault(); setActiveSection('invoice'); }
       else if (ctrlOrCmd && event.key.toLowerCase() === 's') { event.preventDefault(); setActiveSection('directSale'); }
-      else if (ctrlOrCmd && event.key.toLowerCase() === 'r') { event.preventDefault(); setActiveSection('reports'); } 
+      else if (ctrlOrCmd && event.key.toLowerCase() === 'r') { event.preventDefault(); setActiveSection('reports'); }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
@@ -815,7 +846,7 @@ export default function HomePage() {
       </div>
     );
   }
-  console.log("[HomePage] Rendering. Past invoices count for ReportsSection:", pastInvoices.length, "isLoading:", isLoading);
+  console.log("[HomePage] Rendering. Past invoices count for ReportsSection:", pastInvoices.length, "Past direct sales:", pastDirectSalesLog.length, "isLoading:", isLoading);
   return (
     <div className="min-h-screen flex flex-col">
       <AppHeader
@@ -829,22 +860,22 @@ export default function HomePage() {
       />
       <main className="flex-grow container mx-auto p-4 md:p-6">
         {activeSection === 'inventory' && (
-          <InventorySection 
-            inventory={inventory} 
-            setInventory={updateInventoryStateAndDb} 
+          <InventorySection
+            inventory={inventory}
+            setInventory={updateInventoryStateAndDb}
           />
         )}
         {activeSection === 'invoice' && (
           <InvoiceSection
             inventory={inventory}
-            setInventory={updateInventoryStateAndDb} 
+            setInventory={updateInventoryStateAndDb}
             invoiceItems={invoiceItems}
-            setInvoiceItems={setInvoiceItems} 
+            setInvoiceItems={setInvoiceItems}
             invoiceNumber={currentInvoiceNumber}
             invoiceDate={invoiceDate}
             onPrintInvoice={handlePrintInvoice}
             buyerAddress={buyerAddress}
-            setBuyerAddress={setBuyerAddress} 
+            setBuyerAddress={setBuyerAddress}
             onLookupBuyerByGSTIN={lookupBuyerByGstin}
             onLookupBuyerByName={lookupBuyerProfilesByName}
             searchedBuyerProfiles={searchedBuyerProfiles}
@@ -860,15 +891,18 @@ export default function HomePage() {
             setDirectSaleItems={setDirectSaleItems}
             onFinalizeDirectSale={handleFinalizeDirectSale}
             isFinalizing={isFinalizingDirectSale}
+            pastDirectSalesLog={pastDirectSalesLog}
+            fetchPastDirectSalesLog={fetchPastInvoicesAndDirectSales} // Use combined fetcher or a dedicated one
           />
         )}
         {activeSection === 'reports' && (
-          <ReportsSection 
+          <ReportsSection
             pastInvoices={pastInvoices}
-            onInvoiceUpdate={handleInvoiceUpdate} 
-            isLoading={isLoading} 
-            fetchPastInvoices={fetchPastInvoices}
-            inventoryItems={inventory} 
+            pastDirectSalesLog={pastDirectSalesLog}
+            onInvoiceUpdate={handleInvoiceUpdate}
+            isLoading={isLoading}
+            fetchPastSalesData={fetchPastInvoicesAndDirectSales}
+            inventoryItems={inventory}
           />
         )}
       </main>

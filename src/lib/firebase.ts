@@ -11,7 +11,7 @@ import {
   sendPasswordResetEmail,
   type User
 } from "firebase/auth";
-import type { InventoryItem, BuyerAddress, BuyerProfile, AppSettings as AppSettingsType, SalesRecord, Invoice, InvoiceLineItem } from '@/types';
+import type { InventoryItem, BuyerAddress, BuyerProfile, AppSettings as AppSettingsType, SalesRecord, Invoice, InvoiceLineItem, DirectSaleLogEntry } from '@/types';
 
 // Firebase configuration
 const firebaseConfig = {
@@ -204,6 +204,7 @@ const settingsDocRef = doc(db, "settings", "appState");
 const buyerProfilesCollectionRef = collection(db, "buyerProfiles");
 const salesRecordsCollectionRef = collection(db, "salesRecords");
 const invoicesCollectionRef = collection(db, "invoices");
+const directSalesLogCollectionRef = collection(db, "directSalesLog");
 
 
 // --- Settings Functions ---
@@ -223,11 +224,13 @@ export const getAppSettingsFromFirestore = async (initialGlobalBuyerAddress: Buy
       };
       return {
         invoiceCounter: data.invoiceCounter || 1,
+        directSaleCounter: data.directSaleCounter || 1, // Initialize directSaleCounter
         buyerAddress: mergedBuyerAddress
       };
     } else {
       const defaultSettings: AppSettingsType = {
         invoiceCounter: 1,
+        directSaleCounter: 1, // Default directSaleCounter
         buyerAddress: {...initialGlobalBuyerAddress, email: initialGlobalBuyerAddress.email || '', addressLine2: initialGlobalBuyerAddress.addressLine2 || ''},
       };
       await setDoc(settingsDocRef, defaultSettings);
@@ -248,6 +251,15 @@ export const saveInvoiceCounterToFirestore = async (counter: number): Promise<vo
   }
 };
 
+export const saveDirectSaleCounterToFirestore = async (counter: number): Promise<void> => {
+  try {
+    await setDoc(settingsDocRef, { directSaleCounter: counter }, { merge: true });
+  } catch (error) {
+    console.error("Error saving direct sale counter to Firestore:", error);
+    throw error;
+  }
+};
+
 export const saveBuyerAddressToAppSettings = async (address: BuyerAddress): Promise<void> => {
   try {
     const addressToSave = {...address, email: address.email || '', addressLine2: address.addressLine2 || ''};
@@ -262,6 +274,8 @@ export const saveAllAppSettingsToFirestore = async (settings: AppSettingsType): 
   try {
     const settingsToSave = {
       ...settings,
+      invoiceCounter: settings.invoiceCounter || 1,
+      directSaleCounter: settings.directSaleCounter || 1,
       buyerAddress: {
         ...(settings.buyerAddress || {}),
         email: settings.buyerAddress?.email || '',
@@ -371,7 +385,7 @@ export const getSalesRecordsFromFirestore = async (): Promise<SalesRecord[]> => 
       const data = docSnap.data();
       records.push({
         id: docSnap.id,
-        invoiceNumber: data.invoiceNumber || "N/A",
+        invoiceNumber: data.invoiceNumber || "N/A", // This can be INV- or DS-
         saleDate: typeof data.saleDate === 'string' ? data.saleDate : new Date().toLocaleDateString('en-CA'),
         itemId: data.itemId || "N/A",
         itemName: data.itemName || "N/A",
@@ -390,7 +404,7 @@ export const getSalesRecordsFromFirestore = async (): Promise<SalesRecord[]> => 
 };
 
 
-// --- Invoice Storage ---
+// --- Invoice Storage (Formal Invoices) ---
 export const saveInvoiceToFirestore = async (invoice: Invoice): Promise<void> => {
   console.log("[Firebase] saveInvoiceToFirestore called with invoice number:", invoice.invoiceNumber);
   try {
@@ -416,8 +430,7 @@ export const saveInvoiceToFirestore = async (invoice: Invoice): Promise<void> =>
       ...invoice,
       items: itemsToSave,
       buyerAddress: sanitizedBuyerAddress,
-      latestPaymentDate: invoice.latestPaymentDate === undefined ? null : invoice.latestPaymentDate,
-      // Ensure all required fields have defaults if not present
+      latestPaymentDate: invoice.latestPaymentDate === undefined ? null : (invoice.latestPaymentDate === '' ? null : invoice.latestPaymentDate),
       invoiceNumber: invoice.invoiceNumber || `INV-ERR-${Date.now()}`,
       invoiceDate: invoice.invoiceDate || new Date().toLocaleDateString('en-CA'),
       buyerGstin: invoice.buyerGstin || '',
@@ -428,8 +441,7 @@ export const saveInvoiceToFirestore = async (invoice: Invoice): Promise<void> =>
       amountPaid: typeof invoice.amountPaid === 'number' ? invoice.amountPaid : 0,
       status: invoice.status || 'Unpaid',
     };
-    
-    console.log("[Firebase] Data to save (after sanitization):", JSON.stringify(invoiceDataToSave, null, 2).substring(0, 500) + "...");
+
     await setDoc(invoiceDocRef, invoiceDataToSave);
     console.log("[Firebase] Invoice successfully saved to Firestore:", invoice.invoiceNumber);
   } catch (error) {
@@ -441,12 +453,12 @@ export const saveInvoiceToFirestore = async (invoice: Invoice): Promise<void> =>
 export const getInvoicesFromFirestore = async (): Promise<Invoice[]> => {
   console.log("[Firebase] getInvoicesFromFirestore called.");
   try {
-    // Query for all documents, then sort in application code to ensure all docs are processed
-    const querySnapshot = await getDocs(invoicesCollectionRef);
+    const q = query(invoicesCollectionRef, orderBy("invoiceDate", "desc"), orderBy("invoiceNumber", "desc"));
+    const querySnapshot = await getDocs(q);
     const invoices: Invoice[] = [];
     querySnapshot.forEach((docSnap) => {
       const data = docSnap.data();
-      console.log(`[Firebase] Raw invoice data for ${docSnap.id}:`, data);
+      // console.log(`[Firebase] Raw invoice data for ${docSnap.id}:`, data);
 
       if (!data.invoiceNumber || typeof data.invoiceNumber !== 'string') {
         console.warn(`[Firebase] Invoice document ${docSnap.id} missing or invalid invoiceNumber. Skipping.`);
@@ -454,7 +466,6 @@ export const getInvoicesFromFirestore = async (): Promise<Invoice[]> => {
       }
       if (!data.invoiceDate || typeof data.invoiceDate !== 'string') {
         console.warn(`[Firebase] Invoice document ${docSnap.id} missing or invalid invoiceDate. Using fallback.`, data.invoiceDate);
-        // Fallback for invoiceDate, but ideally this should not happen if data is saved correctly
         data.invoiceDate = new Date().toLocaleDateString('en-CA');
       }
 
@@ -491,15 +502,8 @@ export const getInvoicesFromFirestore = async (): Promise<Invoice[]> => {
         grandTotal: typeof data.grandTotal === 'number' ? data.grandTotal : 0,
         amountPaid: typeof data.amountPaid === 'number' ? data.amountPaid : 0,
         status: data.status || 'Unpaid',
-        latestPaymentDate: data.latestPaymentDate === null ? undefined : (data.latestPaymentDate || undefined),
+        latestPaymentDate: data.latestPaymentDate === null ? undefined : (data.latestPaymentDate === '' ? undefined : data.latestPaymentDate),
       } as Invoice);
-    });
-
-    // Sort invoices in application code after fetching and mapping
-    invoices.sort((a, b) => {
-        const dateComparison = new Date(b.invoiceDate).getTime() - new Date(a.invoiceDate).getTime();
-        if (dateComparison !== 0) return dateComparison;
-        return b.invoiceNumber.localeCompare(a.invoiceNumber);
     });
 
     console.log(`[Firebase] Fetched and mapped ${invoices.length} invoices. Sorted by date and number.`);
@@ -514,7 +518,6 @@ export const updateInvoiceInFirestore = async (invoiceNumber: string, updates: P
   console.log(`[Firebase] updateInvoiceInFirestore called for ${invoiceNumber} with updates:`, updates);
   try {
     const invoiceDocRef = doc(invoicesCollectionRef, invoiceNumber);
-    
     const updatesToApply: { [key: string]: any } = {};
 
     if (updates.items) {
@@ -532,22 +535,20 @@ export const updateInvoiceInFirestore = async (invoiceNumber: string, updates: P
             email: updates.buyerAddress.email || '',
         };
     }
-    
+
     if (updates.hasOwnProperty('latestPaymentDate')) {
-      updatesToApply.latestPaymentDate = updates.latestPaymentDate === undefined ? null : updates.latestPaymentDate;
+      updatesToApply.latestPaymentDate = updates.latestPaymentDate === undefined ? null : (updates.latestPaymentDate === '' ? null : updates.latestPaymentDate) ;
     }
 
     for (const key in updates) {
       if (updates.hasOwnProperty(key) && !updatesToApply.hasOwnProperty(key)) {
         (updatesToApply as any)[key] = (updates as any)[key];
-        // Convert any explicit undefined to null for other fields as well
         if ((updatesToApply as any)[key] === undefined) {
             (updatesToApply as any)[key] = null;
         }
       }
     }
-    
-    console.log(`[Firebase] Processed updatesToApply for ${invoiceNumber}:`, updatesToApply);
+
     await setDoc(invoiceDocRef, updatesToApply, { merge: true });
     console.log(`[Firebase] Invoice ${invoiceNumber} updated successfully.`);
   } catch (error) {
@@ -556,8 +557,44 @@ export const updateInvoiceInFirestore = async (invoiceNumber: string, updates: P
   }
 };
 
+// --- Direct Sales Log Functions ---
+export const saveDirectSaleLogEntryToFirestore = async (entry: DirectSaleLogEntry): Promise<void> => {
+  console.log("[Firebase] saveDirectSaleLogEntryToFirestore called with DS number:", entry.directSaleNumber);
+  try {
+    const saleDocRef = doc(directSalesLogCollectionRef, entry.directSaleNumber);
+    await setDoc(saleDocRef, entry);
+    console.log("[Firebase] Direct Sale Log Entry successfully saved:", entry.directSaleNumber);
+  } catch (error) {
+    console.error(`[Firebase] Error saving Direct Sale Log Entry ${entry.directSaleNumber} to Firestore:`, error);
+    throw error;
+  }
+};
+
+export const getDirectSaleLogEntriesFromFirestore = async (): Promise<DirectSaleLogEntry[]> => {
+  console.log("[Firebase] getDirectSaleLogEntriesFromFirestore called.");
+  try {
+    const q = query(directSalesLogCollectionRef, orderBy("saleDate", "desc"), orderBy("directSaleNumber", "desc"));
+    const querySnapshot = await getDocs(q);
+    const entries: DirectSaleLogEntry[] = [];
+    querySnapshot.forEach((docSnap) => {
+      const data = docSnap.data();
+      entries.push({
+        id: docSnap.id, // or data.id if you store it redundantly
+        directSaleNumber: data.directSaleNumber || "DS-ERR",
+        saleDate: data.saleDate || new Date().toLocaleDateString('en-CA'),
+        items: data.items || [],
+        grandTotalSaleAmount: typeof data.grandTotalSaleAmount === 'number' ? data.grandTotalSaleAmount : 0,
+        totalSaleProfit: typeof data.totalSaleProfit === 'number' ? data.totalSaleProfit : 0,
+      } as DirectSaleLogEntry);
+    });
+    console.log(`[Firebase] Fetched ${entries.length} direct sale log entries.`);
+    return entries;
+  } catch (error) {
+    console.error("[Firebase] Error fetching direct sale log entries:", error);
+    return [];
+  }
+};
+
 
 export { db, auth, User };
-export type { InventoryItem, BuyerAddress, BuyerProfile, AppSettingsType, SalesRecord, Invoice, InvoiceLineItem };
-
-    
+export type { InventoryItem, BuyerAddress, BuyerProfile, AppSettingsType, SalesRecord, Invoice, InvoiceLineItem, DirectSaleLogEntry };

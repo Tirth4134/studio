@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useMemo, useCallback, useEffect } from 'react';
-import type { InventoryItem, DirectSaleLineItem } from '@/types';
+import type { InventoryItem, DirectSaleLineItem, DirectSaleLogEntry } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -10,9 +10,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DatePicker } from "@/components/ui/date-picker";
-import { ShoppingBag, PlusSquare, Trash2, DollarSign, Package, Tag, Hash, Percent, Loader2, CalendarDays } from 'lucide-react';
+import { ShoppingBag, PlusSquare, Trash2, DollarSign, Package, Tag, Hash, Percent, Loader2, CalendarDays, RefreshCw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import DirectSaleLogTable from './direct-sale-log-table';
+
 
 interface DirectSaleSectionProps {
   inventory: InventoryItem[];
@@ -21,6 +24,8 @@ interface DirectSaleSectionProps {
   setDirectSaleItems: React.Dispatch<React.SetStateAction<DirectSaleLineItem[]>>;
   onFinalizeDirectSale: (saleDate: string, items: DirectSaleLineItem[]) => Promise<void>;
   isFinalizing: boolean;
+  pastDirectSalesLog: DirectSaleLogEntry[];
+  fetchPastDirectSalesLog: () => Promise<void>;
 }
 
 export default function DirectSaleSection({
@@ -30,12 +35,15 @@ export default function DirectSaleSection({
   setDirectSaleItems,
   onFinalizeDirectSale,
   isFinalizing,
+  pastDirectSalesLog,
+  fetchPastDirectSalesLog,
 }: DirectSaleSectionProps) {
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [selectedItemId, setSelectedItemId] = useState<string>('');
   const [quantity, setQuantity] = useState<string>('1');
   const [saleDate, setSaleDate] = useState<Date | undefined>(new Date());
   const { toast } = useToast();
+  const [isRefreshingLog, setIsRefreshingLog] = useState(false);
 
   const categories = useMemo(() => {
     return [...new Set(inventory.map((item) => item.category))];
@@ -81,13 +89,12 @@ export default function DirectSaleSection({
           total: item.price * qty,
           hsnSac: item.hsnSac,
           gstRate: item.gstRate,
-          stock: item.stock, // Store initial stock for reference, not strictly needed for direct sale logic after add
+          stock: item.stock,
         },
       ]);
     }
-    
-    // Update inventory state immediately for UI feedback
-    setInventory(prevInv => prevInv.map(invItem => 
+
+    setInventory(prevInv => prevInv.map(invItem =>
         invItem.id === item.id ? {...invItem, stock: invItem.stock - qty} : invItem
     ));
 
@@ -97,18 +104,17 @@ export default function DirectSaleSection({
     } else if (item.stock - qty === 0) {
         toast({ title: "Out of Stock", description: `${item.name} is now out of stock.`, variant: "default" });
     }
-    
+
     toast({ title: "Item Added", description: `${item.name} (${qty}) added to direct sale.` });
     setSelectedItemId('');
     setQuantity('1');
-    // Keep category selected
   };
-  
+
   const handleRemoveItemFromDirectSale = (itemIdToRemove: string) => {
     const itemBeingRemoved = directSaleItems.find(item => item.id === itemIdToRemove);
     if (!itemBeingRemoved) return;
 
-    setInventory(prevInv => prevInv.map(invItem => 
+    setInventory(prevInv => prevInv.map(invItem =>
         invItem.id === itemIdToRemove ? {...invItem, stock: invItem.stock + itemBeingRemoved.quantity} : invItem
     ));
     setDirectSaleItems(prevItems => prevItems.filter(item => item.id !== itemIdToRemove));
@@ -126,12 +132,23 @@ export default function DirectSaleSection({
     }
     const formattedSaleDate = format(saleDate, 'yyyy-MM-dd');
     await onFinalizeDirectSale(formattedSaleDate, directSaleItems);
-    // setDirectSaleItems([]); // This will be done in HomePage after successful finalization
   };
 
   const currentSaleTotal = useMemo(() => {
     return directSaleItems.reduce((sum, item) => sum + item.total, 0);
   }, [directSaleItems]);
+
+  const handleRefreshLog = async () => {
+    setIsRefreshingLog(true);
+    try {
+      await fetchPastDirectSalesLog();
+      toast({ title: "Direct Sales Log Refreshed", description: "The list of past direct sales has been updated." });
+    } catch (e) {
+      toast({ title: "Refresh Failed", description: `Could not refresh direct sales log. ${(e as Error).message}`, variant: "destructive" });
+    } finally {
+      setIsRefreshingLog(false);
+    }
+  };
 
   useEffect(() => { setSelectedItemId(''); }, [selectedCategory]);
 
@@ -142,7 +159,7 @@ export default function DirectSaleSection({
           <CardTitle className="flex items-center font-headline text-xl">
             <ShoppingBag className="mr-2 h-6 w-6 text-accent" /> Record Direct Sale
           </CardTitle>
-          <CardDescription>Quickly record over-the-counter sales. Items will be deducted from inventory, and the sale will be marked as paid immediately.</CardDescription>
+          <CardDescription>Quickly record over-the-counter sales. Items will be deducted from inventory. Sales are recorded separately from formal invoices.</CardDescription>
         </CardHeader>
         <CardContent className="pt-6 space-y-6">
           <form onSubmit={handleAddItemToDirectSale} className="space-y-4">
@@ -215,9 +232,9 @@ export default function DirectSaleSection({
           )}
 
           <div className="border-t pt-6 flex justify-end">
-            <Button 
-              onClick={handleFinalizeClick} 
-              className="bg-green-600 hover:bg-green-700 text-white" 
+            <Button
+              onClick={handleFinalizeClick}
+              className="bg-green-600 hover:bg-green-700 text-white"
               disabled={isFinalizing || directSaleItems.length === 0}
             >
               {isFinalizing ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <DollarSign className="mr-2 h-5 w-5" />}
@@ -226,7 +243,22 @@ export default function DirectSaleSection({
           </div>
         </CardContent>
       </Card>
+
+      <Card className="shadow-lg mt-6">
+        <CardHeader className="bg-secondary/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+            <div>
+              <CardTitle className="font-headline text-xl">Direct Sales History</CardTitle>
+              <CardDescription>Log of all finalized direct sales.</CardDescription>
+            </div>
+            <Button variant="outline" size="sm" onClick={handleRefreshLog} disabled={isRefreshingLog}>
+                <RefreshCw className={`mr-2 h-4 w-4 ${isRefreshingLog ? 'animate-spin' : ''}`} />
+                {isRefreshingLog ? 'Refreshing...' : 'Refresh History'}
+            </Button>
+        </CardHeader>
+        <CardContent className="pt-4">
+            <DirectSaleLogTable directSalesLog={pastDirectSalesLog} />
+        </CardContent>
+      </Card>
     </div>
   );
 }
-

@@ -35,12 +35,14 @@ export interface InvoiceLineItem {
 export interface AppData {
   items: InventoryItem[];
   invoiceCounter: number;
+  directSaleCounter?: number; // Added for export/import
   buyerAddress?: BuyerAddress; // To persist if needed in future
 }
 
 export interface AppSettings{
   buyerAddress: BuyerAddress;
   invoiceCounter: number;
+  directSaleCounter: number; // Added for separate direct sale numbering
 }
 
 // Represents a buyer profile stored by GSTIN
@@ -51,8 +53,8 @@ export interface BuyerProfile extends BuyerAddress {
 
 export interface SalesRecord {
   id: string; // Unique ID for the sales record document itself
-  invoiceNumber: string;
-  saleDate: string; // YYYY-MM-DD format
+  invoiceNumber: string; // Can be INV-XXXX or DS-XXXX
+  saleDate: string; // YYYY-MM-DD format (original invoice/sale date)
   itemId: string;
   itemName: string;
   category: string;
@@ -63,11 +65,11 @@ export interface SalesRecord {
 }
 
 export interface Invoice {
-  invoiceNumber: string;
+  invoiceNumber: string; // INV-XXXX
   invoiceDate: string;
-  buyerGstin: string; 
+  buyerGstin: string;
   buyerName: string;
-  buyerAddress: BuyerAddress; 
+  buyerAddress: BuyerAddress;
   items: InvoiceLineItem[];
   subTotal: number; // Sum of (item.price * item.quantity) for all items
   taxAmount: number; // Sum of GST calculated for each item
@@ -77,7 +79,30 @@ export interface Invoice {
   latestPaymentDate?: string | null; // YYYY-MM-DD format for the last payment update, can be null
 }
 
-// Simplified line item for direct sales before full invoice generation
+// For items within a DirectSaleLogEntry
+export interface DirectSaleItemDetail {
+  itemId: string;
+  itemName: string;
+  category: string;
+  quantitySold: number;
+  sellingPricePerUnit: number;
+  buyingPricePerUnit: number; // Important for profit calculation at time of sale
+  totalItemProfit: number;
+  totalItemPrice: number; // sellingPricePerUnit * quantitySold
+}
+
+// For logging finalized direct sales separately
+export interface DirectSaleLogEntry {
+  id: string; // Unique ID for the log entry, can be same as directSaleNumber
+  directSaleNumber: string; // DS-XXXX
+  saleDate: string; // YYYY-MM-DD
+  items: DirectSaleItemDetail[];
+  grandTotalSaleAmount: number;
+  totalSaleProfit: number;
+}
+
+
+// Simplified line item for the direct sale UI form before finalization
 export interface DirectSaleLineItem {
   id: string; // InventoryItem ID
   name: string;
