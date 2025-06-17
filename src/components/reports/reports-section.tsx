@@ -7,7 +7,7 @@ import { getSalesRecordsFromFirestore, updateInvoiceInFirestore, getInventoryFro
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DatePickerWithRange } from "@/components/ui/date-picker-with-range";
-import { DatePicker } from "@/components/ui/date-picker"; 
+import { DatePicker } from "@/components/ui/date-picker";
 import { BarChart3, AlertTriangle, TrendingUp, TrendingDown, DollarSign, Edit, Save, XCircle, RefreshCw } from 'lucide-react';
 import ProfitLossChart from './profit-loss-chart';
 import { subDays, format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, parseISO, differenceInDays, startOfYear, endOfYear, isValid, formatISO } from 'date-fns';
@@ -25,15 +25,15 @@ import { useToast } from '@/hooks/use-toast';
 interface AggregatedProfitDataPoint {
   date: string; // Formatted for display
   profit: number;
-  loss: number; 
+  loss: number;
   originalDate: string; // yyyy-MM-dd or yyyy-MM, for sorting
 }
 
 interface ReportsSectionProps {
   pastInvoices: Invoice[];
   onInvoiceUpdate: (updatedInvoice: Invoice) => void;
-  isLoading: boolean; 
-  fetchPastInvoices: () => Promise<void>; 
+  isLoading: boolean;
+  fetchPastInvoices: () => Promise<void>;
 }
 
 
@@ -43,9 +43,9 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
   const [isDataLoading, setIsDataLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [timeRangeOption, setTimeRangeOption] = useState<string>('last30days'); 
+  const [timeRangeOption, setTimeRangeOption] = useState<string>('last30days');
   const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>(undefined);
-  
+
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
   const [isEditDialogOpén, setIsEditDialogOpen] = useState(false);
   const [editNewPaymentAmount, setEditNewPaymentAmount] = useState<string>('');
@@ -56,13 +56,13 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
 
   useEffect(() => {
     console.log("[ReportsSection] useEffect for initial data fetch triggered.");
-    setIsDataLoading(true); 
+    setIsDataLoading(true);
     const fetchReportData = async () => {
       setError(null);
       try {
         const [fetchedSalesRecords, fetchedInventoryItems] = await Promise.all([
           getSalesRecordsFromFirestore(),
-          getInventoryFromFirestore() 
+          getInventoryFromFirestore()
         ]);
         setSalesRecords(fetchedSalesRecords);
         setInventoryItems(fetchedInventoryItems);
@@ -76,13 +76,13 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
       }
     };
     fetchReportData();
-  }, []); 
+  }, []);
 
   const handleRefreshInvoices = async () => {
     console.log("[ReportsSection] handleRefreshInvoices called.");
     setIsRefreshingInvoices(true);
     try {
-      await fetchPastInvoices(); 
+      await fetchPastInvoices();
       toast({title: "Invoices Refreshed", description: "Past invoices list has been updated."});
     } catch (e) {
        console.error("[ReportsSection] Error during manual invoice refresh:", e);
@@ -93,10 +93,13 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
     }
   };
 
-  const processedChartData = useMemo(() => {
+ const processedChartData = useMemo(() => {
     console.log("[ReportsSection] Recomputing processedChartData. Past Invoices:", pastInvoices.length, "Sales Records:", salesRecords.length, "Inventory Items:", inventoryItems.length);
-    if (isDataLoading && pastInvoices.length === 0) return []; // Wait for all data
-    
+    if (isDataLoading && pastInvoices.length === 0 && inventoryItems.length === 0) {
+        console.log("[ReportsSection] processedChartData: Waiting for all data (pastInvoices, inventoryItems, salesRecords).");
+        return [];
+    }
+
     const now = new Date();
     let startDate: Date;
     let endDate: Date = now;
@@ -114,7 +117,7 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
             case 'lastYear': startDate = startOfYear(subDays(now, 365)); endDate = endOfYear(subDays(now, 365)); break;
             case 'thisYear': startDate = startOfYear(now); endDate = endOfYear(now); break;
             case 'allTime': default:
-                 const allDates: Date[] = [];
+                const allDates: Date[] = [];
                 if (pastInvoices.length > 0) {
                     pastInvoices.forEach(inv => {
                         if (inv.latestPaymentDate && isValid(parseISO(inv.latestPaymentDate))) allDates.push(parseISO(inv.latestPaymentDate));
@@ -135,14 +138,15 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
                 break;
         }
     }
-    
+
     const normalizedStartDate = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
     const normalizedEndDate = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate(), 23, 59, 59, 999);
+    console.log(`[ReportsSection] processedChartData: Date range for chart: ${formatISO(normalizedStartDate)} to ${formatISO(normalizedEndDate)}`);
 
-    const aggregatedMap: Record<string, { profit: number; loss: number }> = {};
+    const aggregatedMap: Record<string, { profit: number; loss: number, originalDate: string }> = {};
     const daysDiff = differenceInDays(normalizedEndDate, normalizedStartDate);
     let aggregationFormat = 'yyyy-MM-dd';
-    if (daysDiff > 90) aggregationFormat = 'yyyy-MM'; // Aggregate by month if range is > 90 days
+    if (daysDiff > 90) aggregationFormat = 'yyyy-MM';
 
     // 1. Process Sales-related Profit/Loss from Paid Invoices
     pastInvoices.forEach(invoice => {
@@ -154,21 +158,33 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
         }
 
         const invoiceSalesRecords = salesRecords.filter(sr => sr.invoiceNumber === invoice.invoiceNumber);
-        if (invoiceSalesRecords.length === 0) return;
-
-        const totalOriginalProfitForInvoice = invoiceSalesRecords.reduce((sum, sr) => sum + sr.totalProfit, 0);
         
-        const realizedProfitOrLoss = invoice.grandTotal > 0 
-            ? (totalOriginalProfitForInvoice * invoice.amountPaid) / invoice.grandTotal
-            : (invoice.amountPaid > 0 ? totalOriginalProfitForInvoice : 0);
+        if (invoiceSalesRecords.length === 0) {
+          console.warn(`[ReportsSection] No sales records found for paid invoice ${invoice.invoiceNumber}. Profit from this invoice cannot be calculated for P&L chart.`);
+          return; // Skip this invoice if no sales records to determine cost base
+        }
+
+        let totalOriginalProfitOrLossForInvoice = 0;
+        invoiceSalesRecords.forEach(sr => {
+            totalOriginalProfitOrLossForInvoice += sr.totalProfit;
+        });
+        
+        const realizedProfitOrLoss = invoice.grandTotal > 0
+            ? (totalOriginalProfitOrLossForInvoice * invoice.amountPaid) / invoice.grandTotal
+            : (invoice.amountPaid > 0 ? totalOriginalProfitOrLossForInvoice : 0);
 
         const dateKey = format(paymentDate, aggregationFormat);
-        if (!aggregatedMap[dateKey]) aggregatedMap[dateKey] = { profit: 0, loss: 0 };
+        if (!aggregatedMap[dateKey]) aggregatedMap[dateKey] = { profit: 0, loss: 0, originalDate: dateKey };
+        
+        console.log(`[ReportsSection] Invoice ${invoice.invoiceNumber}, PaymentDate: ${dateKey}, RealizedP/L: ${realizedProfitOrLoss.toFixed(2)}`);
 
         if (realizedProfitOrLoss > 0) {
             aggregatedMap[dateKey].profit += realizedProfitOrLoss;
+            console.log(`[ReportsSection] Added to profit for ${dateKey}: ${realizedProfitOrLoss.toFixed(2)}. New total profit: ${aggregatedMap[dateKey].profit.toFixed(2)}`);
         } else if (realizedProfitOrLoss < 0) {
-            aggregatedMap[dateKey].loss += Math.abs(realizedProfitOrLoss);
+            const lossAmount = Math.abs(realizedProfitOrLoss);
+            aggregatedMap[dateKey].loss += lossAmount;
+            console.log(`[ReportsSection] Added to loss (from sale) for ${dateKey}: ${lossAmount.toFixed(2)}. New total loss: ${aggregatedMap[dateKey].loss.toFixed(2)}`);
         }
     });
 
@@ -182,27 +198,36 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
         }
 
         const dateKey = format(purchaseDate, aggregationFormat);
-        if (!aggregatedMap[dateKey]) aggregatedMap[dateKey] = { profit: 0, loss: 0 };
+        if (!aggregatedMap[dateKey]) aggregatedMap[dateKey] = { profit: 0, loss: 0, originalDate: dateKey };
         
-        aggregatedMap[dateKey].loss += item.buyingPrice; // Add purchase cost to loss
+        console.log(`[ReportsSection] Inventory Item ${item.name}, PurchaseDate: ${dateKey}, BuyingPrice: ${item.buyingPrice.toFixed(2)}`);
+        aggregatedMap[dateKey].loss += item.buyingPrice;
+        console.log(`[ReportsSection] Added to loss (from purchase) for ${dateKey}: ${item.buyingPrice.toFixed(2)}. New total loss: ${aggregatedMap[dateKey].loss.toFixed(2)}`);
     });
     
+    console.log("[ReportsSection] Aggregated Map for chart:", JSON.parse(JSON.stringify(aggregatedMap)));
+
     let displayFormat = 'dd MMM';
     if (aggregationFormat === 'yyyy-MM') displayFormat = 'MMM yyyy';
 
-    return Object.entries(aggregatedMap)
+    const finalChartData = Object.entries(aggregatedMap)
       .map(([dateKey, { profit, loss }]) => {
           const dateForDisplay = displayFormat === 'MMM yyyy' ? format(parseISO(dateKey + '-01'), displayFormat) : format(parseISO(dateKey), displayFormat);
           return { date: dateForDisplay, profit, loss, originalDate: dateKey };
       })
       .sort((a,b) => new Date(a.originalDate).getTime() - new Date(b.originalDate).getTime());
+    
+    console.log("[ReportsSection] Final Processed Chart Data:", finalChartData);
+    return finalChartData;
 
   }, [pastInvoices, salesRecords, inventoryItems, timeRangeOption, customDateRange, isDataLoading]);
+
 
   const summaryStats = useMemo(() => {
     const totalProfit = processedChartData.reduce((sum, item) => sum + item.profit, 0);
     const totalLoss = processedChartData.reduce((sum, item) => sum + item.loss, 0);
     const netProfit = totalProfit - totalLoss;
+    console.log(`[ReportsSection] Summary Stats: Total Profit: ${totalProfit.toFixed(2)}, Total Loss: ${totalLoss.toFixed(2)}, Net Profit: ${netProfit.toFixed(2)}`);
     return { totalProfit, totalLoss, netProfit };
   }, [processedChartData]);
 
@@ -213,7 +238,7 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
 
   const handleEditInvoiceStatus = (invoice: Invoice) => {
     setEditingInvoice(invoice);
-    setEditNewPaymentAmount(''); 
+    setEditNewPaymentAmount('');
     setEditStatus(invoice.status);
     setEditPaymentDate(invoice.latestPaymentDate ? parseISO(invoice.latestPaymentDate) : new Date());
     setIsEditDialogOpen(true);
@@ -224,8 +249,8 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
         toast({ title: "Error", description: "No invoice selected for editing or payment date is missing.", variant: "destructive" });
         return;
     }
-    
-    const newPaymentAmountNum = parseFloat(editNewPaymentAmount) || 0; 
+
+    const newPaymentAmountNum = parseFloat(editNewPaymentAmount) || 0;
 
     if (newPaymentAmountNum < 0) {
       toast({ title: "Invalid Amount", description: "Payment amount cannot be negative.", variant: "destructive" });
@@ -235,18 +260,22 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
     const currentTotalPaid = editingInvoice.amountPaid;
     const updatedTotalPaid = currentTotalPaid + newPaymentAmountNum;
 
-    let newStatus = editStatus; 
-    if (editStatus !== 'Cancelled') { 
-        if (updatedTotalPaid <= 0 && editingInvoice.grandTotal > 0) newStatus = 'Unpaid';
-        else if (updatedTotalPaid < editingInvoice.grandTotal) newStatus = 'Partially Paid';
-        else if (updatedTotalPaid >= editingInvoice.grandTotal) newStatus = 'Paid';
-        else if (editingInvoice.grandTotal <= 0 && updatedTotalPaid >=0) newStatus = 'Paid'; 
-    }
+    // Round to 2 decimal places for comparison
+    const roundedUpdatedTotalPaid = parseFloat(updatedTotalPaid.toFixed(2));
+    const roundedGrandTotal = parseFloat(editingInvoice.grandTotal.toFixed(2));
 
+    let newStatus = editStatus;
+    if (editStatus !== 'Cancelled') {
+        if (roundedUpdatedTotalPaid <= 0 && roundedGrandTotal > 0) newStatus = 'Unpaid';
+        else if (roundedUpdatedTotalPaid < roundedGrandTotal) newStatus = 'Partially Paid';
+        else if (roundedUpdatedTotalPaid >= roundedGrandTotal) newStatus = 'Paid';
+        else if (roundedGrandTotal <= 0 && roundedUpdatedTotalPaid >=0) newStatus = 'Paid'; // Handles zero/negative grand total invoices
+    }
+    
     const formattedPaymentDate = formatISO(editPaymentDate, { representation: 'date' });
 
     const updatedInvoiceData: Partial<Invoice> = {
-      amountPaid: updatedTotalPaid,
+      amountPaid: updatedTotalPaid, // Save the precise cumulative amount
       status: newStatus,
       latestPaymentDate: formattedPaymentDate,
     };
@@ -259,7 +288,7 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
         status: newStatus,
         latestPaymentDate: formattedPaymentDate,
       };
-      onInvoiceUpdate(fullyUpdatedInvoice); 
+      onInvoiceUpdate(fullyUpdatedInvoice);
       toast({ title: "Invoice Updated", description: `Payment status for invoice ${editingInvoice.invoiceNumber} updated.` });
       setIsEditDialogOpen(false);
       setEditingInvoice(null);
@@ -270,16 +299,16 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
 
   const getStatusBadgeVariant = (status: Invoice['status']): "default" | "secondary" | "destructive" | "outline" => {
     switch (status) {
-      case 'Paid': return 'default'; 
-      case 'Partially Paid': return 'secondary'; 
-      case 'Unpaid': return 'destructive'; 
-      case 'Cancelled': return 'outline'; 
+      case 'Paid': return 'default';
+      case 'Partially Paid': return 'secondary';
+      case 'Unpaid': return 'destructive';
+      case 'Cancelled': return 'outline';
       default: return 'outline';
     }
   };
 
 
-  if (isLoadingProp && pastInvoices.length === 0 && isDataLoading) { 
+  if (isLoadingProp && pastInvoices.length === 0 && isDataLoading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
@@ -288,7 +317,7 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
     );
   }
 
-  if (error) { 
+  if (error) {
     return (
       <Card className="shadow-lg border-destructive">
         <CardHeader>
@@ -343,7 +372,7 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
           </div>
         </CardHeader>
         <CardContent className="pt-6">
-          {isDataLoading ? ( 
+          {isDataLoading && processedChartData.length === 0 ? (
              <div className="flex items-center justify-center h-40">
                 <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-primary"></div>
                 <p className="ml-3 text-muted-foreground">Loading profit/loss chart data...</p>
@@ -371,7 +400,7 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
             </Button>
         </CardHeader>
         <CardContent>
-          {isLoadingProp && pastInvoices.length === 0 ? ( 
+          {isLoadingProp && pastInvoices.length === 0 ? (
              <div className="flex items-center justify-center h-40">
                 <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-primary"></div>
                 <p className="ml-3 text-muted-foreground">Loading past invoices...</p>
@@ -448,10 +477,10 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="paymentDate" className="text-right col-span-1">Payment Date</Label>
-                <DatePicker 
-                    date={editPaymentDate} 
-                    setDate={setEditPaymentDate} 
-                    className="col-span-3" 
+                <DatePicker
+                    date={editPaymentDate}
+                    setDate={setEditPaymentDate}
+                    className="col-span-3"
                 />
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
@@ -478,5 +507,4 @@ export default function ReportsSection({ pastInvoices, onInvoiceUpdate, isLoadin
     </div>
   );
 }
-
     
